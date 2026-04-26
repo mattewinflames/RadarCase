@@ -24,7 +24,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave, onRes
     onClose();
   };
 
-  const handleReset = () => {
+const handleReset = async () => {
     if (confirm('Sei sicuro di voler resettare tutte le impostazioni?')) {
       setLocalSettings(DEFAULT_SETTINGS);
        await onReset();
