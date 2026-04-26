@@ -9,7 +9,9 @@ import {
   User 
 } from 'firebase/auth';
 import { 
-  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection, 
   doc, 
   addDoc, 
@@ -23,44 +25,26 @@ import {
   startAfter,
   setDoc,
   getDoc,
-  getDocFromServer,
-  serverTimestamp,
-  enableIndexedDbPersistence
+  serverTimestamp
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-// Enable offline persistence
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      // Multiple tabs open, persistence can only be enabled in one tab at a a time.
-      console.warn('Firestore persistence failed-precondition');
-    } else if (err.code === 'unimplemented') {
-      // The current browser does not support all of the features required to enable persistence
-      console.warn('Firestore persistence unimplemented');
-    }
-  });
-}
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Detect if mobile for better login strategy
-const isMobile = () => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
-
 export const signIn = async () => {
   try {
-    // Attempt popup first, as it's better for maintaining state in iframes
     return await signInWithPopup(auth, googleProvider);
   } catch (error: any) {
     console.error("Login error:", error);
-    
-    // Fallback for mobile and blocked popups
     if (
       error.code === 'auth/popup-blocked' || 
       error.code === 'auth/cancelled-popup-request' ||
@@ -69,7 +53,6 @@ export const signIn = async () => {
       console.log("Switching to redirect for mobile/blocked environment");
       return await signInWithRedirect(auth, googleProvider);
     }
-    
     throw error;
   }
 };
@@ -93,6 +76,5 @@ export {
   startAfter,
   setDoc,
   getDoc,
-  getDocFromServer,
   serverTimestamp
 };
