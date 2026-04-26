@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="16" fill="#0f172a"/>
+  <!-- House Base -->
+  <path d="M32 16L48 30V48H16V30L32 16Z" fill="#3b82f6"/>
+  <!-- Static Radar circles -->
+  <circle cx="32" cy="34" r="10" stroke="white" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.4"/>
+  <circle cx="32" cy="34" r="16" stroke="white" stroke-width="1" stroke-dasharray="4 3" opacity="0.2"/>
+  <!-- Static Line -->
+  <line x1="32" y1="34" x2="44" y2="22" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <circle cx="32" cy="34" r="2" fill="white"/>
+</svg>

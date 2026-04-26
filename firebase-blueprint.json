@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "House": {
+      "title": "Property Listing",
+      "description": "Details of a house being considered for purchase",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "location": { "type": "string" },
+        "link": { "type": "string" },
+        "notes": { "type": "string" },
+        "visited": { "type": "boolean" },
+        "score": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "userId": { "type": "string" },
+        "commute": {
+          "type": "object",
+          "properties": {
+            "daughter": {
+              "type": "object",
+              "properties": { "distance": { "type": "string" } }
+            },
+            "work": {
+              "type": "object",
+              "properties": { "distance": { "type": "string" } }
+            }
+          }
+        }
+      },
+      "required": ["title", "price", "location", "userId", "createdAt"]
+    },
+    "UserProgress": {
+      "title": "User Buying Progress",
+      "description": "The current step of the user in the house buying journey",
+      "type": "object",
+      "properties": {
+        "currentStep": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["currentStep", "updatedAt"]
+    },
+    "UserSettings": {
+      "title": "User Personal settings",
+      "description": "Configuration for commute targets and other user-specific settings",
+      "type": "object",
+      "properties": {
+        "destinations": {
+          "type": "object",
+          "properties": {
+            "daughter": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string" },
+                "address": { "type": "string" },
+                "short": { "type": "string" },
+                "lat": { "type": "number" },
+                "lng": { "type": "number" }
+              }
+            },
+            "work": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string" },
+                "address": { "type": "string" },
+                "short": { "type": "string" },
+                "lat": { "type": "number" },
+                "lng": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/houses/{houseId}": {
+      "schema": "House",
+      "description": "Collection of houses saved by users"
+    },
+    "/userProgress/{userId}": {
+      "schema": "UserProgress",
+      "description": "The journey step progress for each user"
+    },
+    "/userSettings/{userId}": {
+      "schema": "UserSettings",
+      "description": "Personalized destinations and preferences"
+    }
+  }
+}
