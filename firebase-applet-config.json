@@ -1,10 +1,9 @@
 {
   "projectId": "radarcase-f6283",
-  "appId": "1:276393810450:web:970eb56905aca75ef216cb",
-  "apiKey": "AIzaSyB0T1qHdHiQ4FcRIsvW9gmiPr5plIffkGA",
+  "appId": "1:16304998126:web:abfe14ccdcf112fe1c0e0f",
+  "apiKey": "AIzaSyBTpc804_vkasADub23XMeD-BxNq-JMSK4",
   "authDomain": "radarcase-f6283.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-5cf7778b-3309-49f1-9f6e-b886617f8141",
-  "storageBucket": "gen-lang-client-0209118224.firebasestorage.app",
-  "messagingSenderId": "276393810450",
+  "storageBucket": "radarcase-f6283.appspot.com",
+  "messagingSenderId": "16304998126",
   "measurementId": ""
 }
