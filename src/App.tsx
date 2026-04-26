@@ -74,7 +74,7 @@ export default function App() {
       // Use a timeout to avoid waiting too long for the unavailable state
       const connectionPromise = getDocFromServer(doc(db, 'test', 'connection'));
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('timeout')), 5000)
+        setTimeout(() => reject(new Error('timeout')), 3000)
       );
       
       await Promise.race([connectionPromise, timeoutPromise]);
