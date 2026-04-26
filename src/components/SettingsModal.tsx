@@ -8,9 +8,10 @@ interface Props {
   onClose: () => void;
   settings: UserSettings;
   onSave: (settings: UserSettings) => void;
+  onReset: () => Promise<void>;
 }
 
-export default function SettingsModal({ isOpen, onClose, settings, onSave }: Props) {
+export default function SettingsModal({ isOpen, onClose, settings, onSave, onReset }: Props) {
   const [localSettings, setLocalSettings] = useState<UserSettings>(settings);
   useEffect(() => {
   if (isOpen) {
@@ -26,6 +27,8 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }: Pro
   const handleReset = () => {
     if (confirm('Sei sicuro di voler resettare tutte le impostazioni?')) {
       setLocalSettings(DEFAULT_SETTINGS);
+       await onReset();
+    onClose();
     }
   };
 
