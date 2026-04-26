@@ -23,7 +23,6 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onTogg
     work: house.commute?.work.distance || ''
   });
 
-  // Sync temp distances when house data changes externally
   React.useEffect(() => {
     setTempDistances({
       daughter: house.commute?.daughter.distance || '',
@@ -86,19 +85,21 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onTogg
   };
 
   const getGoogleMapsRoute = (dest: { address: string, zip?: string, city?: string, lat?: number, lng?: number }) => {
-    // Favor the address string for the destination to let Google Maps handle the precise geocoding
-    // as it's generally more accurate with house numbers than Nominatim
     let destStr = dest.address;
     if (dest.zip) destStr += `, ${dest.zip}`;
     if (dest.city) destStr += `, ${dest.city}`;
     if (!destStr.toLowerCase().includes('italy')) destStr += ', Italy';
     
-    // If we only have coordinates, use them as fallback
     if (!dest.address && dest.lat && dest.lng) {
       destStr = `${dest.lat},${dest.lng}`;
     }
+
+    // ✅ FIX: include il numero civico nell'indirizzo di origine
+    const origin = house.houseNumber
+      ? `${house.location} ${house.houseNumber.trim()}`
+      : house.location;
     
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(house.location)}&destination=${encodeURIComponent(destStr)}&travelmode=driving`;
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destStr)}&travelmode=driving`;
   };
 
   const handleSaveCommute = () => {
@@ -202,7 +203,7 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onTogg
                 title="Clicca per modificare l'indirizzo"
               >
                 <MapPin className={`w-3 h-3 ${house.geocodingFailed ? 'text-red-500' : (!house.lat && !house.lng) ? 'text-blue-400 animate-pulse' : 'text-slate-400 group-hover/loc:text-blue-500'}`} />
-                <span className="truncate">{house.location}</span>
+                <span className="truncate">{house.location}{house.houseNumber ? ` ${house.houseNumber}` : ''}</span>
                 {house.geocodingFailed && (
                    <AlertCircle className="w-3 h-3 text-red-500 shrink-0" />
                 )}
@@ -289,7 +290,6 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onTogg
           </span>
         </div>
 
-        {/* Commute Estimates - Distance Only */}
         <div className="grid grid-cols-2 gap-3 mb-6" onClick={e => e.stopPropagation()}>
           {currentDestinations.daughter.label && (
             <div 
