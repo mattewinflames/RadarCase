@@ -1115,6 +1115,12 @@ export default function App() {
             onClose={() => setIsSettingsOpen(false)}
             settings={userSettings}
             onSave={updateSettings}
+            onReset={async () => {
+    setUserSettings(DEFAULT_SETTINGS);
+    if (user) {
+      await setDoc(doc(db, 'userSettings', user.uid), DEFAULT_SETTINGS);
+    }
+  }}
           />
         </div>
       } />
