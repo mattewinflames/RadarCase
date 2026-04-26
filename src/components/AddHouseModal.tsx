@@ -21,7 +21,6 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
     price: 0,
     sqm: 0,
     location: '',
-    houseNumber: '',
     link: '',
     notes: '',
     visited: false,
@@ -39,9 +38,7 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
   };
 
   const formatItalianNumber = (value: string) => {
-    // Remove everything that is not a digit
     const cleaned = value.replace(/\D/g, '');
-    // Add dots for thousands
     return cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   };
 
@@ -49,7 +46,6 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
     const rawValue = e.target.value;
     const formatted = formatItalianNumber(rawValue);
     const numericValue = Number(rawValue.replace(/\D/g, ''));
-    
     setPriceInput(formatted);
     setFormData({ ...formData, price: numericValue });
   };
@@ -70,12 +66,11 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
 
     setShowErrors(false);
 
-    // Set title to location if title is empty
     const finalFormData = {
       ...formData,
       title: formData.title || formData.location.split(',')[0]
     };
-    
+
     onAdd(finalFormData);
     onClose();
     setShowErrors(false);
@@ -84,7 +79,6 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
       price: 0,
       sqm: 0,
       location: '',
-      houseNumber: '',
       link: '',
       notes: '',
       visited: false,
@@ -113,7 +107,7 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
             className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-[101] p-8 overflow-y-auto"
             id="add-house-modal"
           >
-                <div className="flex justify-between items-center mb-8">
+            <div className="flex justify-between items-center mb-8">
               <div>
                 <h2 className="text-xl font-bold text-slate-800">Nuovo Immobile</h2>
                 {showErrors && (
@@ -146,7 +140,7 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
                 />
               </div>
 
-                <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 transition-colors ${showErrors && errors.price ? 'text-red-500' : 'text-slate-400'}`}>
                     {appMode === 'buy' ? 'Prezzo (€)' : 'Affitto / Mese (€)'}
@@ -192,31 +186,22 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-4">
-                <div className="col-span-3">
-                  <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 transition-colors ${showErrors && errors.location ? 'text-red-500' : 'text-slate-400'}`}>Indirizzo (Via/Piazza)</label>
-                  <input 
-                    type="text"
-                    placeholder="Via Emilia"
-                    className={`w-full border rounded-xl px-4 py-2.5 focus:outline-none transition-all text-sm ${
-                      showErrors && errors.location 
-                        ? 'bg-red-50 border-red-200 focus:ring-red-500/10 focus:border-red-500' 
-                        : 'bg-slate-50 border-slate-200 focus:ring-blue-500/20 focus:border-blue-500'
-                    }`}
-                    value={formData.location}
-                    onChange={e => setFormData({...formData, location: e.target.value})}
-                  />
-                </div>
-                <div className="col-span-1">
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Civico</label>
-                  <input 
-                    type="text"
-                    placeholder="3/N"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm font-mono"
-                    value={formData.houseNumber}
-                    onChange={e => setFormData({...formData, houseNumber: e.target.value})}
-                  />
-                </div>
+              {/* ✅ Indirizzo a larghezza piena — civico incluso direttamente */}
+              <div>
+                <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 transition-colors ${showErrors && errors.location ? 'text-red-500' : 'text-slate-400'}`}>
+                  Indirizzo completo
+                </label>
+                <input 
+                  type="text"
+                  placeholder="es. Via Emilia 3, Bologna"
+                  className={`w-full border rounded-xl px-4 py-2.5 focus:outline-none transition-all text-sm ${
+                    showErrors && errors.location 
+                      ? 'bg-red-50 border-red-200 focus:ring-red-500/10 focus:border-red-500' 
+                      : 'bg-slate-50 border-slate-200 focus:ring-blue-500/20 focus:border-blue-500'
+                  }`}
+                  value={formData.location}
+                  onChange={e => setFormData({...formData, location: e.target.value})}
+                />
               </div>
 
               <div>
