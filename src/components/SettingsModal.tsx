@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, X, Save, MapPin, Briefcase, Heart, Home, Key, Trash2 } from 'lucide-react';
 import { UserSettings, DEFAULT_SETTINGS } from '../types';
@@ -12,6 +12,11 @@ interface Props {
 
 export default function SettingsModal({ isOpen, onClose, settings, onSave }: Props) {
   const [localSettings, setLocalSettings] = useState<UserSettings>(settings);
+  useEffect(() => {
+  if (isOpen) {
+    setLocalSettings(settings);
+  }
+}, [isOpen, settings]);
 
   const handleSave = () => {
     onSave(localSettings);
