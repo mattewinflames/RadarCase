@@ -25,6 +25,7 @@ import {
   startAfter,
   setDoc,
   getDoc,
+  getDocFromServer,
   serverTimestamp
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -76,5 +77,6 @@ export {
   startAfter,
   setDoc,
   getDoc,
+  getDocFromServer,
   serverTimestamp
 };
