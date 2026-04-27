@@ -67,9 +67,10 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
     setShowErrors(false);
 
     const finalFormData = {
-      ...formData,
-      title: formData.title || formData.location.split(',')[0]
-    };
+  ...formData,
+  title: formData.title || formData.location.split(',')[0],
+  score: Math.min(5, Math.max(1, formData.score))
+};
 
     onAdd(finalFormData);
     onClose();
