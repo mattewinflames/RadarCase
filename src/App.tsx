@@ -463,7 +463,7 @@ export default function App() {
       ...houseData,
       type: userSettings.appMode,
       userId: user.uid,
-      createdAt: Date.now(),
+     createdAt: serverTimestamp(),
     });
 
     setIsModalOpen(false);
