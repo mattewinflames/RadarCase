@@ -45,7 +45,7 @@ import {
   setDoc,
   getDoc,
   checkRedirectResult,
-  getDocFromServer
+  getDocFromServer,
   serverTimestamp
 } from './lib/firebase';
 
