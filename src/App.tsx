@@ -45,7 +45,8 @@ import {
   setDoc,
   getDoc,
   checkRedirectResult,
-  getDocFromServer
+  getDocFromServer,
+  serverTimestamp
 } from './lib/firebase';
 
 type SortOption = 'date' | 'price' | 'sqm' | 'score' | 'distance_arianna' | 'distance_work';
