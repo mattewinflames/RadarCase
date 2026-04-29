@@ -176,6 +176,7 @@ Rispondi SOLO con un JSON array di stringhe, senza markdown, senza backtick, sen
       });
 
       const data = await response.json();
+      console.log('Gemini raw response:', JSON.stringify(data));
       const clean = data.result.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 const parsed = JSON.parse(clean);
       setQuestions(parsed);
