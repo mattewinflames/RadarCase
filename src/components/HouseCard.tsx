@@ -176,7 +176,8 @@ Rispondi SOLO con un JSON array di stringhe, senza markdown, senza backtick, sen
       });
 
       const data = await response.json();
-      const parsed = JSON.parse(data.result.trim());
+      const clean = data.result.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+const parsed = JSON.parse(clean);
       setQuestions(parsed);
     } catch (e) {
       setQuestions(['Errore nella generazione delle domande. Riprova.']);
