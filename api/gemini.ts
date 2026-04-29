@@ -28,6 +28,9 @@ export default async function handler(req: any, res: any) {
 
     const data = await response.json();
     console.log('Gemini API response:', JSON.stringify(data).slice(0, 300));
+    console.log('STATUS:', response.status);
+    console.log('CANDIDATES:', JSON.stringify(data.candidates?.slice(0,1)));
+    console.log('ERROR:', JSON.stringify(data.error));
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     return res.status(200).json({ result: text });
   } catch (error) {
