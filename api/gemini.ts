@@ -19,15 +19,15 @@ export default async function handler(req: any, res: any) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { 
-            responseMimeType: 'application/json',
-            temperature: isQuestions ? 0.7 : 0.1
-          }
+          generationConfig: isQuestions
+            ? { temperature: 0.7 }
+            : { responseMimeType: 'application/json', temperature: 0.1 }
         })
       }
     );
 
     const data = await response.json();
+    console.log('Gemini API response:', JSON.stringify(data).slice(0, 300));
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     return res.status(200).json({ result: text });
   } catch (error) {
