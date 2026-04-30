@@ -10,27 +10,31 @@ export default async function handler(req: any, res: any) {
   }
 
   const isQuestions = type === 'questions';
+  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
 
   try {
-    const response = await fetch(
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: isQuestions
-            ? { temperature: 0.7 }
-            : { responseMimeType: 'application/json', temperature: 0.1 }
-        })
-      }
-    );
+    let data: any = null;
 
-    const data = await response.json();
-    console.log('Gemini API response:', JSON.stringify(data).slice(0, 300));
-    console.log('STATUS:', response.status);
-    console.log('CANDIDATES:', JSON.stringify(data.candidates?.slice(0,1)));
-    console.log('ERROR:', JSON.stringify(data.error));
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    for (const model of models) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: isQuestions
+              ? { temperature: 0.7 }
+              : { responseMimeType: 'application/json', temperature: 0.1 }
+          })
+        }
+      );
+      data = await response.json();
+      if (!data.error) break;
+      console.log(`Model ${model} failed:`, data.error.status);
+    }
+
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     return res.status(200).json({ result: text });
   } catch (error) {
     return res.status(500).json({ error: 'Gemini request failed' });
