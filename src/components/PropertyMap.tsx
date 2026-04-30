@@ -39,16 +39,23 @@ interface Props {
   settings: UserSettings;
 }
 
-function SetViewOnSelection({ houses }: { houses: House[] }) {
+function SetViewOnSelection({ houses, settings }: { houses: House[], settings: UserSettings }) {
   const map = useMap();
   React.useEffect(() => {
     const validPoints = houses.filter(h => h.lat && h.lng);
+    const dest = settings[settings.appMode].destinations;
     
-    if (validPoints.length > 0) {
-      const bounds = L.latLngBounds(validPoints.map(p => [p.lat!, p.lng!]));
+    const allPoints: [number, number][] = [
+      ...validPoints.map(p => [p.lat!, p.lng!] as [number, number]),
+      ...(dest.daughter.lat && dest.daughter.lng ? [[dest.daughter.lat, dest.daughter.lng] as [number, number]] : []),
+      ...(dest.work.lat && dest.work.lng ? [[dest.work.lat, dest.work.lng] as [number, number]] : []),
+    ];
+
+    if (allPoints.length > 0) {
+      const bounds = L.latLngBounds(allPoints);
       map.fitBounds(bounds, { padding: [70, 70], animate: true });
     }
-  }, [houses, map]);
+  }, [houses, settings, map]);
   return null;
 }
 
@@ -154,7 +161,7 @@ export default function PropertyMap({ houses, onSelectHouse, settings }: Props) 
         {/* Houses Markers (Lazy Loaded) */}
         <LazyMarkers houses={mapHouses} onSelectHouse={onSelectHouse} />
 
-        <SetViewOnSelection houses={houses} />
+      <SetViewOnSelection houses={houses} settings={settings} />
       </MapContainer>
 
       {/* Map Legend/Overlay */}
