@@ -763,7 +763,7 @@ export default function App() {
                     <button 
                       id="btn-open-modal"
                       onClick={() => setIsModalOpen(true)}
-                      className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-all shadow-sm flex items-center gap-2"
+                      className="bg-slate-900 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-700 transition-all flex items-center gap-1.5"
                     >
                       <Plus className="w-4 h-4" />
                       <span className="hidden sm:inline">Aggiungi al Radar</span>
