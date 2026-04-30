@@ -460,7 +460,7 @@ const parsed = JSON.parse(clean);
                         )}
                         {house.kwh && house.sqm && (
                           <p className="mt-0.5 text-green-300">
-                            💰 ~€ {Math.round(house.kwh * house.sqm * 0.25).toLocaleString('it-IT')} / anno stimati
+                            💰 ~€ {Math.round(house.kwh * house.sqm / 10 * 0.75).toLocaleString('it-IT')} / anno stimati
                           </p>
                         )}
                         <div className="absolute top-full left-4 border-4 border-transparent border-t-slate-900" />
