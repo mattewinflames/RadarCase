@@ -10,7 +10,11 @@ export default async function handler(req: any, res: any) {
   }
 
   const isQuestions = type === 'questions';
-  const models = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+  const models = [
+  'gemini-1.5-flash', 
+  'gemini-1.5-pro', 
+  'gemini-1.0-pro'
+];
   try {
     let data: any = null;
 
