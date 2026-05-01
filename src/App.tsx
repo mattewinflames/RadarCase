@@ -1122,8 +1122,7 @@ export default function App() {
             onClose={() => setIsSettingsOpen(false)}
             settings={userSettings}
             onSave={updateSettings}
-            onReset={async () => {
-              const mode = userSettings.appMode;
+            onReset={async (mode) => {
               const resetSettings = {
                 ...userSettings,
                 [mode]: DEFAULT_SETTINGS[mode]
