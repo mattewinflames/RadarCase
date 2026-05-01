@@ -1118,22 +1118,37 @@ export default function App() {
           />
 
           <SettingsModal
-            isOpen={isSettingsOpen}
-            onClose={() => setIsSettingsOpen(false)}
-            settings={userSettings}
-            onSave={updateSettings}
-            onReset={async () => {
-              const mode = userSettings.appMode;
-              const resetSettings = {
-                ...userSettings,
-                [mode]: DEFAULT_SETTINGS[mode]
-              };
-              setUserSettings(resetSettings);
-              if (user) {
-                await setDoc(doc(db, 'userSettings', user.uid), resetSettings);
-              }
-            }}
-          />
+  isOpen={isSettingsOpen}
+  onClose={() => setIsSettingsOpen(false)}
+  settings={userSettings}
+  onSave={updateSettings}
+  onReset={async () => {
+    if (!user) return; // [Riga A] Controllo sicurezza utente
+
+    try {
+      // [Riga B] Identifica dinamicamente la modalità attiva (buy o rent)
+      const currentMode = userSettings.appMode;
+
+      // [Riga C] Crea il nuovo oggetto mantenendo intatta l'altra modalità
+      const newSettings = {
+        ...userSettings,
+        [currentMode]: DEFAULT_SETTINGS[currentMode]
+      };
+
+      // [Riga D] Aggiorna lo stato locale per la reattività immediata della UI
+      setUserSettings(newSettings);
+
+      // [Riga E] Sovrascrive il documento su Firestore con i valori di default
+      const userDocRef = doc(db, 'userSettings', user.uid);
+      await setDoc(userDocRef, newSettings);
+
+      console.log(`Reset ${currentMode} completato`);
+    } catch (error) {
+      console.error("Errore durante il reset:", error);
+    }
+  }}
+/>
+
         </div>
       } />
     </Routes>
