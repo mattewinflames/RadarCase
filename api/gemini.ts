@@ -4,78 +4,94 @@ export default async function handler(req: any, res: any) {
   }
 
   const { prompt, type } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
-
-  // NOMI MODELLI: Usiamo i nomi precisi supportati in v1beta (come da tua immagine)
-  const models = [
-    'gemini-1.5-flash-latest', 
-    'gemini-1.5-pro-latest',
-    'gemini-2.0-flash-exp',    // Un'ottima alternativa se disponibile
-    'gemini-1.5-flash',
-    'gemini-1.5-pro'
-  ];
+  if (!prompt) {
+    return res.status(400).json({ error: 'Missing prompt' });
+  }
 
   const isQuestions = type === 'questions';
 
-  try {
-    let finalData: any = null;
-    let lastError: any = null;
+  // ✅ SOLO MODELLI ATTUALMENTE SUPPORTATI
+  const models = [
+    'gemini-2.5-flash', // veloce + economico (best default)
+    'gemini-2.0-flash', // fallback stabile
+    'gemini-2.5-pro'    // più potente (fallback finale)
+  ];
 
-    for (const model of models) {
-      try {
-        console.log(`Provando modello: ${model}`);
-        
-        // Passiamo a v1beta per massima compatibilità con i modelli preview/latest
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              safetySettings: [
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-              ],
-              generationConfig: isQuestions
-                ? { temperature: 0.7 }
-                : { responseMimeType: 'application/json', temperature: 0.1 }
-            })
-          }
-        );
+  let finalText: string | null = null;
+  let lastError: any = null;
 
-        const data = await response.json();
+  for (const model of models) {
+    try {
+      console.log(`➡️ Provo modello: ${model}`);
 
-        if (data.error) {
-          console.error(`Errore con ${model}:`, data.error.message);
-          lastError = data.error;
-          continue; 
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            safetySettings: [
+              { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+            ],
+            generationConfig: {
+              temperature: isQuestions ? 0.7 : 0.1,
+              responseMimeType: 'application/json'
+            }
+          })
         }
+      );
 
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          finalData = data;
-          break; 
-        }
-      } catch (err: any) {
-        lastError = err;
+      const data = await response.json().catch(() => null);
+
+      // ❌ errore HTTP
+      if (!response.ok) {
+        console.error(`❌ ${model} HTTP ${response.status}:`, data);
+        lastError = data?.error || { message: `HTTP ${response.status}` };
+        continue;
       }
+
+      // ❌ errore API
+      if (data?.error) {
+        console.error(`❌ ${model} API error:`, data.error.message);
+        lastError = data.error;
+        continue;
+      }
+
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+      if (!text) {
+        console.warn(`⚠️ ${model} risposta vuota`);
+        continue;
+      }
+
+      console.log(`✅ Successo con ${model}`);
+      finalText = text;
+      break;
+
+    } catch (err: any) {
+      console.error(`🔥 Errore fetch con ${model}:`, err.message);
+      lastError = err;
     }
-
-    const resultText = finalData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!resultText) {
-      return res.status(500).json({ 
-        error: 'Errore generazione', 
-        details: lastError?.message || 'Modelli non trovati o API instabile' 
-      });
-    }
-
-    return res.status(200).json({ result: resultText });
-
-  } catch (error: any) {
-    return res.status(500).json({ error: 'Internal Error', message: error.message });
   }
+
+  // ❌ nessun modello ha funzionato
+  if (!finalText) {
+    return res.status(500).json({
+      error: 'Errore generazione',
+      details: lastError?.message || 'Tutti i modelli hanno fallito'
+    });
+  }
+
+  // 🧼 Pulizia output (evita ```json ecc)
+  const clean = finalText
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  return res.status(200).json({ result: clean });
 }
