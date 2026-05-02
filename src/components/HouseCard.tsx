@@ -255,13 +255,13 @@ const parsed = JSON.parse(clean);
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: -4 }}
                     transition={{ duration: 0.1 }}
-                    className="absolute right-0 top-8 z-50 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden min-w-[160px]"
+                    className="absolute right-0 top-8 z-50 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden min-w-[200px] py-1"
                   >
                     {onRetryGeocoding && house.lat && house.lng && (
                       <button
                         onClick={handleRetry}
                         disabled={isRetrying}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        className="w-full flex items-center justify-start gap-2.5 px-4 py-2.5 text-sm leading-5 whitespace-nowrap text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
                         Ricalcola distanze
@@ -269,14 +269,14 @@ const parsed = JSON.parse(clean);
                     )}
                     <button
                       onClick={() => { setMenuOpen(false); setDetailsOpen(true); }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                      className="w-full flex items-center justify-start gap-2.5 px-4 py-2.5 text-sm leading-5 whitespace-nowrap text-slate-600 hover:bg-slate-50 transition-colors"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                       Modifica dettagli
                     </button>
                     <button
                       onClick={handleGenerateQuestions}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+                      className="w-full flex items-center justify-start gap-2.5 px-4 py-2.5 text-sm leading-5 whitespace-nowrap text-blue-600 hover:bg-blue-50 transition-colors"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       Genera domande visita
@@ -284,7 +284,7 @@ const parsed = JSON.parse(clean);
                     <div className="border-t border-slate-100" />
                     <button
                       onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(house.id); }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs text-red-500 hover:bg-red-50 transition-colors"
+                      className="w-full flex items-center justify-start gap-2.5 px-4 py-2.5 text-sm leading-5 whitespace-nowrap text-red-500 hover:bg-red-50 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       Elimina
