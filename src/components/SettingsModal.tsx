@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void;
   settings: UserSettings;
   onSave: (settings: UserSettings) => void;
-  onReset: () => Promise<void>;
+  onReset: (mode: 'buy' | 'rent') => Promise<void>;
 }
 
 export default function SettingsModal({ isOpen, onClose, settings, onSave, onReset }: Props) {
@@ -32,7 +32,7 @@ const handleReset = async () => {
         [localSettings.appMode]: DEFAULT_SETTINGS[localSettings.appMode]
       };
       setLocalSettings(resetSettings);
-       await onReset();
+      await onReset(localSettings.appMode);
     onClose();
     }
   };
