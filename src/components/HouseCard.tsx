@@ -441,15 +441,15 @@ const parsed = JSON.parse(clean);
 
           {/* Extra details badge row */}
           {(house.condition || house.energyClass || house.yearBuilt || house.heating) && (
-            <div className="flex flex-wrap gap-1.5 mb-4 mt-2" onClick={e => e.stopPropagation()}>
+            <div className="flex flex-wrap gap-2 mb-4 mt-2" onClick={e => e.stopPropagation()}>
               {house.condition && (
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold uppercase rounded-full">
+                <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-600 text-[9px] font-semibold uppercase tracking-wide rounded-full border border-slate-200">
                   {conditionLabel[house.condition]}
                 </span>
               )}
               {house.energyClass && (
                 <div className="relative group/energy">
-                  <span className="px-2 py-0.5 bg-green-50 text-green-600 text-[9px] font-bold uppercase rounded-full cursor-default">
+                  <span className="inline-flex items-center px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[9px] font-semibold uppercase tracking-wide rounded-full border border-emerald-200 cursor-default">
                     Classe {house.energyClass}
                   </span>
                   {(house.kwh || house.sqm) && (
@@ -470,12 +470,12 @@ const parsed = JSON.parse(clean);
                 </div>
               )}
               {house.yearBuilt && (
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold uppercase rounded-full">
+                <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-600 text-[9px] font-semibold uppercase tracking-wide rounded-full border border-slate-200">
                   {house.yearBuilt}
                 </span>
               )}
               {house.heating && (
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold uppercase rounded-full">
+                <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-600 text-[9px] font-semibold uppercase tracking-wide rounded-full border border-slate-200">
                   Risc. {heatingLabel[house.heating]}
                 </span>
               )}
