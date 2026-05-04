@@ -35,6 +35,8 @@ export interface House {
   heating?: 'autonomo' | 'centralizzato' | 'assente';
   kwh?: number;
   energyClass?: 'A4' | 'A3' | 'A2' | 'A1' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
+  rentalContractType?: '4+4' | '3+2' | 'transitorio' | 'uso_studenti' | 'libero';
+  condoFees?: number;
 }
 
 export type BuyingStep = 'ricerca' | 'proposta' | 'compromesso' | 'mutuo' | 'rogito';
