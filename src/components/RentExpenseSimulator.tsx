@@ -26,6 +26,7 @@ export default function RentExpenseSimulator({ houses, selectedHouseId, onHouseS
   }, [selectedHouseId, houses]);
 
   const selectedHouse = houses.find(h => h.id === selectedHouseId);
+  const condoFees = selectedHouse?.condoFees ?? 0;
 
   const calcs = useMemo(() => {
     // 1. Agency Fee: 1 month + 22% VAT
