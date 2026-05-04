@@ -103,6 +103,7 @@ export default function ExpenseSimulator({ houses, selectedHouseId, onHouseSelec
 
     // 6. Altre Spese (Visure etc)
     const extraMisc = overrides.misc ?? 250;
+    const condoFeesExtra = (selectedHouse?.condoFees ?? 0) * 12;
 
     // 7. Buffer (1% suggested)
     const buffer = overrides.buffer ?? (safePrice * 0.01);
@@ -111,8 +112,8 @@ export default function ExpenseSimulator({ houses, selectedHouseId, onHouseSelec
     const nMin = overrides.notary ?? notaryRange.min;
     const nMax = overrides.notary ?? notaryRange.max;
 
-    const totalMin = totalTaxes + nMin + totalAgency + totalMortgageCosts + extraMisc;
-    const totalMax = totalTaxes + nMax + totalAgency + totalMortgageCosts + extraMisc + buffer;
+    const totalMin = totalTaxes + nMin + totalAgency + totalMortgageCosts + extraMisc + condoFeesExtra;
+    const totalMax = totalTaxes + nMax + totalAgency + totalMortgageCosts + extraMisc + condoFeesExtra + buffer;
 
     return {
       catValue,
@@ -122,6 +123,7 @@ export default function ExpenseSimulator({ houses, selectedHouseId, onHouseSelec
       totalAgency,
       totalMortgageCosts,
       extraMisc,
+      condoFeesExtra,
       buffer,
       totalMin,
       totalMax,
@@ -133,7 +135,7 @@ export default function ExpenseSimulator({ houses, selectedHouseId, onHouseSelec
       istruttoria,
       assicurazione
     };
-  }, [price, cadastralIncome, hasMortgage, mortgageAmount, hasAgency, agencyPercentage, overrides]);
+  }, [price, cadastralIncome, hasMortgage, mortgageAmount, hasAgency, agencyPercentage, overrides, selectedHouse]);
 
   const handleOverride = (id: string, value: string) => {
     const cleanValue = value.replace(/[^0-9]/g, '');
@@ -428,6 +430,13 @@ export default function ExpenseSimulator({ houses, selectedHouseId, onHouseSelec
                         </span>
                       )}
                     </div>
+
+                    {calcs.condoFeesExtra > 0 && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-400">Extra • Spese condominio (annue)</span>
+                        <span className="font-mono">{Math.round(calcs.condoFeesExtra).toLocaleString('it-IT')} €</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

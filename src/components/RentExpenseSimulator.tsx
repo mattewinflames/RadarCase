@@ -25,6 +25,7 @@ export default function RentExpenseSimulator({ houses, selectedHouseId, onHouseS
   }, [selectedHouseId, houses]);
 
   const selectedHouse = houses.find(h => h.id === selectedHouseId);
+  const condoFeesMonthly = selectedHouse?.condoFees ?? 0;
 
   const calcs = useMemo(() => {
     // 1. Agency Fee: 1 month + 22% VAT
@@ -42,6 +43,7 @@ export default function RentExpenseSimulator({ houses, selectedHouseId, onHouseS
     const miscSpese = 100;
 
     const totalStartup = totalAgency + totalDeposit + firstMonth + miscSpese;
+    const monthlyRecurring = rent + condoFeesMonthly;
 
     return {
       agencyBase,
@@ -50,9 +52,10 @@ export default function RentExpenseSimulator({ houses, selectedHouseId, onHouseS
       totalDeposit,
       firstMonth,
       miscSpese,
-      totalStartup
+      totalStartup,
+      monthlyRecurring
     };
-  }, [rent, depositMonths, hasAgency]);
+  }, [rent, depositMonths, hasAgency, condoFeesMonthly]);
 
   return (
     <section className="bg-slate-900 rounded-[48px] p-8 md:p-12 text-white shadow-2xl relative overflow-hidden" id="simulator">
@@ -193,6 +196,17 @@ export default function RentExpenseSimulator({ houses, selectedHouseId, onHouseS
                     <p className="text-sm font-bold font-mono">€ {calcs.firstMonth.toLocaleString('it-IT')}</p>
                   </div>
 
+
+                  {condoFeesMonthly > 0 && (
+                    <div className="flex justify-between items-center group">
+                      <div className="space-y-0.5">
+                        <p className="text-slate-200 text-sm font-medium">Extra • Spese Condominio</p>
+                        <p className="text-[10px] text-slate-500">Dato importato dai dettagli immobile</p>
+                      </div>
+                      <p className="text-sm font-bold font-mono">€ {condoFeesMonthly.toLocaleString('it-IT')}</p>
+                    </div>
+                  )}
+
                   <div className="flex justify-between items-center group">
                     <div className="space-y-0.5">
                       <p className="text-slate-200 text-sm font-medium">Bolli e Registrazione</p>
@@ -218,9 +232,9 @@ export default function RentExpenseSimulator({ houses, selectedHouseId, onHouseS
                   <div className="text-left md:text-right">
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Costo Ricorrente</p>
                     <div className="bg-amber-600 px-6 py-3 rounded-2xl shadow-xl shadow-amber-900/40">
-                      <p className="text-[9px] text-amber-100 uppercase font-bold tracking-widest mb-0.5 whitespace-nowrap">Ogni Mese</p>
+                      <p className="text-[9px] text-amber-100 uppercase font-bold tracking-widest mb-0.5 whitespace-nowrap">Ogni Mese (canone + extra)</p>
                       <p className="text-2xl font-bold text-white font-mono leading-none">
-                        € {rent.toLocaleString('it-IT')}
+                        € {calcs.monthlyRecurring.toLocaleString('it-IT')}
                       </p>
                     </div>
                   </div>

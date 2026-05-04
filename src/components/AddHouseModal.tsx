@@ -31,6 +31,8 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
     heating: '' as House['heating'] | '',
     kwh: '' as string | number,
     energyClass: '' as House['energyClass'] | '',
+    rentalContractType: '' as House['rentalContractType'] | '',
+    condoFees: '' as string | number,
   });
 
   const [priceInput, setPriceInput] = useState('');
@@ -89,9 +91,13 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
     if (formData.kwh !== '') finalFormData.kwh = Number(formData.kwh);
     else delete finalFormData.kwh;
 
+    if (formData.condoFees !== '') finalFormData.condoFees = Number(formData.condoFees);
+    else delete finalFormData.condoFees;
+
     if (!formData.condition) delete finalFormData.condition;
     if (!formData.heating) delete finalFormData.heating;
     if (!formData.energyClass) delete finalFormData.energyClass;
+    if (!formData.rentalContractType) delete finalFormData.rentalContractType;
 
     onAdd(finalFormData);
     onClose();
@@ -112,6 +118,8 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
       heating: '',
       kwh: '',
       energyClass: '',
+      rentalContractType: '',
+      condoFees: '',
     });
     setPriceInput('');
     setSqmInput('');
@@ -350,6 +358,38 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode }: Props
                             <option value="buono">Buono</option>
                             <option value="da_ristrutturare">Da ristrutturare</option>
                           </select>
+                        </div>
+
+
+
+                        {appMode === 'rent' && (
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Tipo contratto</label>
+                            <select
+                              className={selectClass}
+                              value={formData.rentalContractType}
+                              onChange={e => setFormData({...formData, rentalContractType: e.target.value as House['rentalContractType']})}
+                            >
+                              <option value="">-</option>
+                              <option value="4+4">4+4</option>
+                              <option value="3+2">3+2</option>
+                              <option value="transitorio">Transitorio</option>
+                              <option value="uso_studenti">Uso studenti</option>
+                              <option value="libero">Libero</option>
+                            </select>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Spese condominio (€/mese)</label>
+                          <input
+                            type="number"
+                            placeholder="es. 120"
+                            min="0"
+                            className={inputClass}
+                            value={formData.condoFees}
+                            onChange={e => setFormData({...formData, condoFees: e.target.value})}
+                          />
                         </div>
 
                         <div>
