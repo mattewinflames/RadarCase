@@ -33,8 +33,8 @@ const HeartRating: React.FC<HeartRatingProps> = ({ value, onChange, size = 'md',
               viewBox="0 0 24 24"
               width={px}
               height={px}
-              fill={n <= active ? '#D4537E' : 'none'}
-              stroke={n <= active ? '#D4537E' : '#cbd5e1'}
+              fill={n <= active ? '#64748b' : 'none'}
+              stroke={n <= active ? '#64748b' : '#cbd5e1'}
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
