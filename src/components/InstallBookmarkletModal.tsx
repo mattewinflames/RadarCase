@@ -17,7 +17,7 @@ interface Props {
 const IMPORTER_SOURCE = "(function () { var APP = '{{APP_URL}}'; function b64url(s) { return btoa(unescape(encodeURIComponent(s))) .replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, ''); } var url = location.href.split('#')[0]; var payload = null; try { if (/(^|\\.)immobiliare\\.it$/.test(location.hostname)) { var nd = document.getElementById('__NEXT_DATA__'); if (nd) { var j = JSON.parse(nd.textContent); var dd = j && j.props && j.props.pageProps && j.props.pageProps.detailData; var re = dd && dd.realEstate; var p = re && re.properties && re.properties[0]; if (re && p) { var loc = p.location || {}; var en = p.energy || {}; var costs = p.costs || {}; payload = { v: 1, mode: 'exact', url: url, data: { title: re.title, price: (re.price && re.price.value) || (p.price && p.price.value) || null, surface: p.surface, address: loc.address, streetNumber: loc.streetNumber, city: loc.city, lat: loc.latitude, lng: loc.longitude, buildingYear: p.buildingYear, floor: p.floor && p.floor.floorOnlyValue, condition: p.condition, heating: p.ga4Heating || en.heatingType, energyClass: en.class && en.class.name, epi: en.epi, condoFees: costs.condominiumExpenses, contract: re.contract } }; } } } } catch (e) { payload = null; /* struttura cambiata: si ripiega sul testo */ } if (!payload) { var hints = []; try { var nodes = document.querySelectorAll('img[alt], [aria-label], [title]'); for (var i = 0; i < nodes.length && hints.length < 12; i++) { var el = nodes[i]; var s = el.getAttribute('alt') || el.getAttribute('aria-label') || el.getAttribute('title') || ''; if (s && /energ|classe|certific/i.test(s) && hints.indexOf(s) === -1) { hints.push(s.slice(0, 80)); } } } catch (e) { /* niente indizi, pazienza */ } payload = { v: 1, mode: 'text', url: url, title: document.title, text: (document.body.innerText || '').slice(0, 15000), hints: hints }; } var target = APP + '#import=' + b64url(JSON.stringify(payload)); var w = window.open(target, '_blank'); if (!w) { location.href = target; } /* popup bloccato: si naviga nella stessa scheda */ })();";
 
 export default function InstallBookmarkletModal({ isOpen, onClose, appUrl }: Props) {
-  const dragRef = useRef<HTMLSpanElement | null>(null);
+  const dragRef = useRef<HTMLAnchorElement | null>(null);
   const [copied, setCopied] = useState(false);
 
   const bookmarklet = 'javascript:' + encodeURIComponent(
@@ -78,14 +78,13 @@ export default function InstallBookmarkletModal({ isOpen, onClose, appUrl }: Pro
 
               {/* Zona di trascinamento */}
               <div className="relative overflow-hidden rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-slate-50 p-6 text-center mb-3">
-                <span
+                <a
                   ref={dragRef}
                   onClick={e => e.preventDefault()}
                   className="inline-block cursor-grab active:cursor-grabbing select-none rounded-lg bg-indigo-600 px-6 py-3 font-bold text-white shadow-lg shadow-indigo-600/30"
-                  draggable={false}
                 >
                   Importa in RadarCase
-                </span>
+                </a>
                 <p className="mt-3 text-xs text-slate-500">
                   Trascinami sulla barra dei preferiti
                 </p>
