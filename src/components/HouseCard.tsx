@@ -224,6 +224,11 @@ Regole rigide:
 
   const currentDestinations = settings[settings.appMode].destinations;
 
+  const isUnavailable = house.availability === 'unavailable';
+  const unavailableDays = house.unavailableSince
+    ? Math.max(0, Math.floor((Date.now() - house.unavailableSince) / 86400000))
+    : null;
+
   return (
     <>
       <motion.div 
@@ -238,7 +243,7 @@ Regole rigide:
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
         onClick={() => onSelect?.()}
         className={`relative cursor-pointer bg-white border-2 rounded-[24px] overflow-hidden group shadow-sm transition-colors duration-200 ${
-          isSelected ? 'border-blue-600 ring-4 ring-blue-50' : 'border-slate-200'
+          isSelected ? 'border-blue-600 ring-4 ring-blue-50' : isUnavailable ? 'border-slate-300' : 'border-slate-200'
         }`}
         id={`house-card-${house.id}`}
       >
@@ -249,8 +254,15 @@ Regole rigide:
             </div>
           </div>
         )}
-        
-        <div className="p-5">
+
+        {isUnavailable && (
+          <div className="flex items-center gap-1.5 bg-slate-700 text-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest">
+            <AlertCircle className="w-3 h-3 shrink-0" />
+            Non più disponibile{unavailableDays !== null ? ` · da ${unavailableDays} ${unavailableDays === 1 ? 'giorno' : 'giorni'}` : ''}
+          </div>
+        )}
+
+        <div className={`p-5 transition-all ${isUnavailable ? 'grayscale opacity-70' : ''}`}>
           {/* Header */}
           <div className="flex justify-between items-start mb-3" onClick={e => e.stopPropagation()}>
             <button 
