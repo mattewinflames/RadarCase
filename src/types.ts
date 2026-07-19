@@ -37,6 +37,11 @@ export interface House {
   energyClass?: 'A4' | 'A3' | 'A2' | 'A1' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   rentalContractType?: '4+4' | '3+2' | 'transitorio' | 'uso_studenti' | 'libero';
   condoFees?: number;
+  // Stato disponibilità (scritto dallo script di controllo, non cancella mai l'immobile)
+  availability?: 'available' | 'unavailable';
+  lastCheckStatus?: 'available' | 'unavailable' | 'unknown';
+  lastChecked?: number;      // epoch ms dell'ultimo controllo
+  unavailableSince?: number; // epoch ms da quando risulta non più disponibile
 }
 
 export type BuyingStep = 'ricerca' | 'proposta' | 'compromesso' | 'mutuo' | 'rogito';
