@@ -256,9 +256,19 @@ Regole rigide:
         )}
 
         {isUnavailable && (
-          <div className="flex items-center gap-1.5 bg-slate-700 text-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest">
-            <AlertCircle className="w-3 h-3 shrink-0" />
-            Non più disponibile{unavailableDays !== null ? ` · da ${unavailableDays} ${unavailableDays === 1 ? 'giorno' : 'giorni'}` : ''}
+          <div className="flex items-center justify-between gap-2 bg-slate-700 text-white px-4 py-1.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              Non più disponibile{unavailableDays !== null ? ` · da ${unavailableDays} ${unavailableDays === 1 ? 'giorno' : 'giorni'}` : ''}
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(house.id); }}
+              className="flex items-center gap-1 rounded-md bg-red-500 hover:bg-red-600 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white transition-colors shrink-0"
+              title="Rimuovi dall'elenco"
+            >
+              <Trash2 className="w-3 h-3" />
+              Rimuovi
+            </button>
           </div>
         )}
 
@@ -275,7 +285,9 @@ Regole rigide:
               {house.visited ? 'VISITATA' : 'DA VISITARE'}
             </button>
 
-            {/* Context menu */}
+            {/* Context menu — nascosto per gli annunci non più disponibili:
+                lì l'unica azione utile è Rimuovi, già presente (in rosso) nel banner */}
+            {!isUnavailable && (
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
@@ -330,6 +342,7 @@ Regole rigide:
                 )}
               </AnimatePresence>
             </div>
+            )}
           </div>
 
           <h3 className="text-base font-bold text-slate-900 mb-1 truncate">
