@@ -1,20 +1,20 @@
 import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, ZoomControl, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { House, UserSettings } from '../types';
-import { Home as HomeIcon, Briefcase, User as UserIcon, ExternalLink, AlertCircle } from 'lucide-react';
+import { Home as HomeIcon, Briefcase, User as UserIcon, ExternalLink, AlertCircle, ChevronDown } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix for default marker icon in Leaflet + React
 // We use custom icons for everything to avoid path issues
-const createCustomIcon = (iconElement: React.ReactNode, color: string) => {
+const createCustomIcon = (iconElement: React.ReactNode, color: string, shape: 'circle' | 'square' = 'circle') => {
   const html = renderToStaticMarkup(
     <div style={{ 
       color: 'white', 
       backgroundColor: color,
       padding: '8px',
-      borderRadius: '50%',
+      borderRadius: shape === 'square' ? '9px' : '50%',
       border: '2px solid white',
       boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
       display: 'flex',
@@ -39,12 +39,20 @@ interface Props {
   settings: UserSettings;
 }
 
+// Solleva l'istanza della mappa al componente padre, così il pannello-legenda
+// (che vive fuori da MapContainer) può comandare pan/zoom.
+function MapReady({ onReady }: { onReady: (map: L.Map) => void }) {
+  const map = useMap();
+  React.useEffect(() => { onReady(map); }, [map, onReady]);
+  return null;
+}
+
 function SetViewOnSelection({ houses, settings }: { houses: House[], settings: UserSettings }) {
   const map = useMap();
   React.useEffect(() => {
     const validPoints = houses.filter(h => h.lat && h.lng);
     const dest = settings[settings.appMode].destinations;
-    
+
     const allPoints: [number, number][] = [
       ...validPoints.map(p => [p.lat!, p.lng!] as [number, number]),
       ...(dest.daughter.lat && dest.daughter.lng ? [[dest.daughter.lat, dest.daughter.lng] as [number, number]] : []),
@@ -118,6 +126,20 @@ function LazyMarkers({ houses, onSelectHouse }: { houses: House[], onSelectHouse
 
 export default function PropertyMap({ houses, onSelectHouse, settings }: Props) {
   const mapHouses = houses.filter(h => h.lat && h.lng);
+  const dest = settings[settings.appMode].destinations;
+
+  const [mapInstance, setMapInstance] = React.useState<L.Map | null>(null);
+  const [listOpen, setListOpen] = React.useState(false);
+  const [hoveredId, setHoveredId] = React.useState<string | null>(null);
+
+  // Porta la mappa su un immobile (usato al passaggio del mouse / al tap nel pannello).
+  const focusHouse = React.useCallback((house: House) => {
+    if (!mapInstance || house.lat == null || house.lng == null) return;
+    const z = Math.max(mapInstance.getZoom(), 14);
+    mapInstance.flyTo([house.lat, house.lng], z, { duration: 0.5 });
+  }, [mapInstance]);
+
+  const hoveredHouse = hoveredId ? mapHouses.find(h => h.id === hoveredId) : null;
 
   return (
     <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden h-full relative z-0" id="property-map">
@@ -127,6 +149,7 @@ export default function PropertyMap({ houses, onSelectHouse, settings }: Props) 
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
       >
+        <MapReady onReady={setMapInstance} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
@@ -139,7 +162,7 @@ export default function PropertyMap({ houses, onSelectHouse, settings }: Props) 
         {!!(settings[settings.appMode].destinations.daughter.lat && settings[settings.appMode].destinations.daughter.lng) && (
           <Marker 
             position={[settings[settings.appMode].destinations.daughter.lat, settings[settings.appMode].destinations.daughter.lng]} 
-            icon={createCustomIcon(<UserIcon size={18} />, '#10b981')}
+            icon={createCustomIcon(<UserIcon size={18} />, '#10b981', 'square')}
           >
             <Popup>
               <div className="p-1">
@@ -153,7 +176,7 @@ export default function PropertyMap({ houses, onSelectHouse, settings }: Props) 
         {!!(settings[settings.appMode].destinations.work.lat && settings[settings.appMode].destinations.work.lng) && (
           <Marker 
             position={[settings[settings.appMode].destinations.work.lat, settings[settings.appMode].destinations.work.lng]} 
-            icon={createCustomIcon(<Briefcase size={18} />, '#6366f1')}
+            icon={createCustomIcon(<Briefcase size={18} />, '#f59e0b', 'square')}
           >
             <Popup>
               <div className="p-1">
@@ -167,16 +190,67 @@ export default function PropertyMap({ houses, onSelectHouse, settings }: Props) 
         {/* Houses Markers (Lazy Loaded) */}
         <LazyMarkers houses={mapHouses} onSelectHouse={onSelectHouse} />
 
+        {/* Evidenziazione dell'immobile sotto il mouse nel pannello */}
+        {hoveredHouse && hoveredHouse.lat != null && hoveredHouse.lng != null && (
+          <CircleMarker
+            center={[hoveredHouse.lat, hoveredHouse.lng]}
+            radius={22}
+            pathOptions={{ color: '#2563eb', weight: 3, fillColor: '#2563eb', fillOpacity: 0.12 }}
+          />
+        )}
+
       <SetViewOnSelection houses={houses} settings={settings} />
       </MapContainer>
 
       {/* Map Legend/Overlay */}
       <div className="absolute top-6 left-6 z-[1000] bg-white/95 backdrop-blur-md p-5 rounded-3xl border border-slate-200 shadow-2xl flex flex-col gap-4">
          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-1">Legenda Mappa</h3>
-         <div className="flex items-center gap-3">
-           <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-200"><HomeIcon size={14} /></div>
-           <span className="text-[11px] font-bold text-slate-700">Immobili Salvati ({mapHouses.length}/{houses.length})</span>
-         </div>
+         <button
+           onClick={() => setListOpen(o => !o)}
+           className="flex items-center gap-3 w-full text-left group"
+           title="Mostra l'elenco degli immobili localizzati"
+         >
+           <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-200 shrink-0"><HomeIcon size={14} /></div>
+           <span className="text-[11px] font-bold text-slate-700 flex-1">Immobili Salvati ({mapHouses.length}/{houses.length})</span>
+           {mapHouses.length > 0 && (
+             <ChevronDown size={14} className={`text-slate-400 transition-transform ${listOpen ? 'rotate-180' : ''}`} />
+           )}
+         </button>
+
+         {listOpen && mapHouses.length > 0 && (
+           <div className="-mt-1 max-h-64 overflow-y-auto no-scrollbar flex flex-col gap-0.5 pr-1">
+             {mapHouses.map(h => (
+               <button
+                 key={h.id}
+                 onMouseEnter={() => { setHoveredId(h.id); focusHouse(h); }}
+                 onMouseLeave={() => setHoveredId(null)}
+                 onClick={() => { focusHouse(h); onSelectHouse(h.id); }}
+                 className={`text-left px-2.5 py-1.5 rounded-lg transition-colors ${
+                   hoveredId === h.id ? 'bg-blue-50' : 'hover:bg-slate-50'
+                 }`}
+               >
+                 <p className="text-[11px] font-bold text-slate-700 truncate">{h.title}</p>
+                 <p className="text-[10px] text-slate-400 truncate">
+                   € {h.price.toLocaleString('it-IT')}{h.type === 'rent' ? '/mese' : ''} · {h.location}
+                 </p>
+               </button>
+             ))}
+           </div>
+         )}
+
+         {!!(dest.daughter.lat && dest.daughter.lng) && (
+           <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-[9px] flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: '#10b981' }}><UserIcon size={14} /></div>
+             <span className="text-[11px] font-bold text-slate-700">{dest.daughter.label || 'Destinazione 1'}</span>
+           </div>
+         )}
+
+         {!!(dest.work.lat && dest.work.lng) && (
+           <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-[9px] flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: '#f59e0b' }}><Briefcase size={14} /></div>
+             <span className="text-[11px] font-bold text-slate-700">{dest.work.label || 'Destinazione 2'}</span>
+           </div>
+         )}
 
          {houses.some(h => h.geocodingFailed) && (
            <div className="flex items-center gap-3">
