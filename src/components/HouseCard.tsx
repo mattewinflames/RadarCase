@@ -53,6 +53,7 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onTogg
   const [assessment, setAssessment] = useState<{ strengths: string[]; concerns: string[] } | null>(null);
   const [checkedQuestions, setCheckedQuestions] = useState<Set<number>>(new Set());
   const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [showAllCommutes, setShowAllCommutes] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const formatItalianNumber = (value: string) => {
@@ -461,38 +462,43 @@ Regole rigide:
             </div>
           </div>
 
-          {/* Commute */}
-          <div className="grid grid-cols-2 gap-3 mb-2" onClick={e => e.stopPropagation()}>
-            {currentDestinations.daughter.label && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">{currentDestinations.daughter.label}</p>
-                <div className="flex items-center gap-1 flex-wrap">
-                  <span className="text-lg font-light text-slate-900">
-                    {(!house.commute?.daughter.distance || parseFloat(house.commute.daughter.distance.toString()) > 4000) ? '-' : house.commute.daughter.distance}
-                  </span>
-                  <span className="text-[10px] text-slate-500 uppercase font-bold">km</span>
-                  {house.commute?.daughter.duration && (
-                    <span className="text-[10px] text-slate-400 ml-1">• {house.commute.daughter.duration}</span>
-                  )}
+          {/* Commute — mostra i primi 2 punti, gli altri a espansione */}
+          {(() => {
+            const named = currentDestinations.filter(d => d.label || d.short);
+            const shownDests = showAllCommutes ? named : named.slice(0, 2);
+            if (named.length === 0) return null;
+            return (
+              <div onClick={e => e.stopPropagation()}>
+                <div className="grid grid-cols-2 gap-3 mb-2">
+                  {shownDests.map(d => {
+                    const c = house.commute?.[d.id];
+                    const dist = c?.distance;
+                    const shown = (!dist || parseFloat(dist.toString()) > 4000) ? '-' : dist;
+                    return (
+                      <div key={d.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <p className="text-[9px] text-slate-400 uppercase font-bold mb-1 truncate">{d.label || d.short}</p>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-lg font-light text-slate-900">{shown}</span>
+                          <span className="text-[10px] text-slate-500 uppercase font-bold">km</span>
+                          {c?.duration && (
+                            <span className="text-[10px] text-slate-400 ml-1">• {c.duration}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+                {named.length > 2 && (
+                  <button
+                    onClick={() => setShowAllCommutes(v => !v)}
+                    className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors mb-2"
+                  >
+                    {showAllCommutes ? '− Mostra meno' : `+ Altri ${named.length - 2}`}
+                  </button>
+                )}
               </div>
-            )}
-            
-            {currentDestinations.work.label && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">{currentDestinations.work.label}</p>
-                <div className="flex items-center gap-1 flex-wrap">
-                  <span className="text-lg font-light text-slate-900">
-                    {(!house.commute?.work.distance || parseFloat(house.commute.work.distance.toString()) > 4000) ? '-' : house.commute.work.distance}
-                  </span>
-                  <span className="text-[10px] text-slate-500 uppercase font-bold">km</span>
-                  {house.commute?.work.duration && (
-                    <span className="text-[10px] text-slate-400 ml-1">• {house.commute.work.duration}</span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* Extra details badge row */}
           {(house.condition || house.energyClass || house.yearBuilt || house.heating) && (
@@ -580,26 +586,17 @@ Regole rigide:
             >
               Annuncio
             </a>
-            {currentDestinations.daughter.label && currentDestinations.daughter.address && (
-              <button 
+            {currentDestinations.filter(d => (d.label || d.short) && d.address).map(d => (
+              <button
+                key={d.id}
                 className="px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-2"
-                title={`Percorso verso ${currentDestinations.daughter.label}`}
-                onClick={() => window.open(getGoogleMapsRoute(currentDestinations.daughter), '_blank')}
+                title={`Percorso verso ${d.label || d.short}`}
+                onClick={() => window.open(getGoogleMapsRoute(d), '_blank')}
               >
                 <Navigation className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-bold">{currentDestinations.daughter.short}</span>
+                <span className="text-[10px] font-bold">{d.short || d.label}</span>
               </button>
-            )}
-            {currentDestinations.work.label && currentDestinations.work.address && (
-              <button 
-                className="px-3 py-2 bg-pink-50 text-pink-600 rounded-lg hover:bg-pink-100 transition-colors flex items-center gap-2"
-                title={`Percorso verso ${currentDestinations.work.label}`}
-                onClick={() => window.open(getGoogleMapsRoute(currentDestinations.work), '_blank')}
-              >
-                <Navigation className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-bold">{currentDestinations.work.short}</span>
-              </button>
-            )}
+            ))}
           </div>
         </div>
       </motion.div>
