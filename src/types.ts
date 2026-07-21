@@ -25,8 +25,7 @@ export interface House {
   lng?: number | null;
   geocodingFailed?: boolean;
   commute?: {
-    daughter: CommuteInfo;
-    work: CommuteInfo;
+    [destId: string]: CommuteInfo;
   };
   // Campi aggiuntivi per analisi AI
   yearBuilt?: number;
@@ -140,6 +139,7 @@ export const JOURNEY_STEPS: StepInfo[] = [
 ];
 
 export interface Destination {
+  id: string;          // stabile; 'daughter'/'work' per i predefiniti, generato per gli altri
   label: string;
   address: string;
   houseNumber?: string;
@@ -148,53 +148,90 @@ export interface Destination {
   short: string;
   lat: number;
   lng: number;
+  isDefault?: boolean; // true per Figlia/Lavoro: non eliminabili
 }
 
 export interface UserSettings {
   appMode: 'buy' | 'rent';
   buy: {
-    destinations: {
-      daughter: Destination;
-      work: Destination;
-    };
+    destinations: Destination[];
   };
   rent: {
-    destinations: {
-      daughter: Destination;
-      work: Destination;
-    };
+    destinations: Destination[];
   };
 }
 
-const emptyDestinations = {
-  daughter: {
-    label: '',
-    address: '',
-    houseNumber: '',
-    zip: '',
-    city: '',
-    short: '',
-    lat: 0,
-    lng: 0
-  },
-  work: {
-    label: '',
-    address: '',
-    houseNumber: '',
-    zip: '',
-    city: '',
-    short: '',
-    lat: 0,
-    lng: 0
-  },
-};
+function emptyDest(id: string, isDefault: boolean): Destination {
+  return { id, label: '', address: '', houseNumber: '', zip: '', city: '', short: '', lat: 0, lng: 0, isDefault };
+}
+
+// I due predefiniti, sempre presenti e non eliminabili.
+export function makeDefaultDestinations(): Destination[] {
+  return [emptyDest('daughter', true), emptyDest('work', true)];
+}
+
+// Genera un id per una nuova destinazione aggiunta dall'utente.
+export function newDestinationId(): string {
+  return 'dest_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+/**
+ * Migrazione: accetta sia il vecchio formato { daughter, work } sia il nuovo array,
+ * e restituisce SEMPRE un array che inizia con i due predefiniti (id daughter, work),
+ * seguiti dagli eventuali extra. Nessun dato viene perso.
+ */
+export function normalizeDestinations(raw: any): Destination[] {
+  const coerce = (d: any, id: string, isDefault: boolean): Destination => ({
+    id: (d && d.id) ? d.id : id,
+    label: (d && d.label) ?? '',
+    address: (d && d.address) ?? '',
+    houseNumber: (d && d.houseNumber) ?? '',
+    zip: (d && d.zip) ?? '',
+    city: (d && d.city) ?? '',
+    short: (d && d.short) ?? '',
+    lat: (d && typeof d.lat === 'number') ? d.lat : 0,
+    lng: (d && typeof d.lng === 'number') ? d.lng : 0,
+    isDefault,
+  });
+
+  let daughterRaw: any, workRaw: any, extrasRaw: any[] = [];
+
+  if (Array.isArray(raw)) {
+    daughterRaw = raw.find(d => d && d.id === 'daughter');
+    workRaw = raw.find(d => d && d.id === 'work');
+    extrasRaw = raw.filter(d => d && d.id !== 'daughter' && d.id !== 'work');
+  } else if (raw && typeof raw === 'object') {
+    daughterRaw = raw.daughter;
+    workRaw = raw.work;
+    extrasRaw = Object.keys(raw)
+      .filter(k => k !== 'daughter' && k !== 'work' && raw[k] && typeof raw[k] === 'object')
+      .map(k => ({ ...raw[k], id: raw[k].id || k }));
+  }
+
+  const daughter = coerce(daughterRaw, 'daughter', true);
+  const work = coerce(workRaw, 'work', true);
+  const extras = extrasRaw.map((d, i) => coerce(d, (d && d.id) || newDestinationId() + i, false));
+  return [daughter, work, ...extras];
+}
+
+// Migra l'intero oggetto impostazioni letto da Firestore.
+export function migrateSettings(data: any): UserSettings {
+  const legacyTop = data && data.destinations; // vecchissimo formato con destinations top-level
+  const buyRaw = (data && data.buy && data.buy.destinations) || legacyTop;
+  const rentRaw = (data && data.rent && data.rent.destinations) || legacyTop;
+  return {
+    appMode: (data && data.appMode === 'rent') ? 'rent' : 'buy',
+    buy: { destinations: normalizeDestinations(buyRaw) },
+    rent: { destinations: normalizeDestinations(rentRaw) },
+  };
+}
 
 export const DEFAULT_SETTINGS: UserSettings = {
   appMode: 'buy',
   buy: {
-    destinations: { ...emptyDestinations }
+    destinations: makeDefaultDestinations()
   },
   rent: {
-    destinations: { ...emptyDestinations }
+    destinations: makeDefaultDestinations()
   }
 };
