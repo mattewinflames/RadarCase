@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, X, Save, MapPin, Briefcase, Heart, Home, Key, Trash2 } from 'lucide-react';
-import { UserSettings, DEFAULT_SETTINGS } from '../types';
+import { Settings, X, Save, MapPin, Briefcase, Heart, Home, Key, Trash2, Plus } from 'lucide-react';
+import { UserSettings, DEFAULT_SETTINGS, Destination, newDestinationId } from '../types';
 
 interface Props {
   isOpen: boolean;
@@ -46,29 +46,168 @@ const handleReset = async () => {
     setLocalSettings(prev => ({ ...prev, appMode: mode }));
   };
 
-  const updateDestination = (key: 'daughter' | 'work', field: string, value: string | number) => {
+  const updateDestination = (id: string, field: string, value: string | number) => {
     setLocalSettings(prev => {
-      let finalValue = value;
+      let finalValue: string | number = value;
       if (field === 'lat' || field === 'lng') {
         const parsed = parseFloat(value.toString());
         finalValue = isNaN(parsed) ? 0 : parsed;
       }
-      
       const mode = prev.appMode;
       return {
         ...prev,
         [mode]: {
           ...prev[mode],
-          destinations: {
-            ...prev[mode].destinations,
-            [key]: {
-              ...prev[mode].destinations[key],
-              [field]: finalValue
-            }
-          }
+          destinations: prev[mode].destinations.map(d =>
+            d.id === id ? { ...d, [field]: finalValue } : d
+          )
         }
       };
     });
+  };
+
+  const addDestination = () => {
+    setLocalSettings(prev => {
+      const mode = prev.appMode;
+      const newDest: Destination = {
+        id: newDestinationId(), label: '', short: '', address: '',
+        houseNumber: '', zip: '', city: '', lat: 0, lng: 0, isDefault: false
+      };
+      return { ...prev, [mode]: { ...prev[mode], destinations: [...prev[mode].destinations, newDest] } };
+    });
+  };
+
+  const removeDestination = (id: string) => {
+    setLocalSettings(prev => {
+      const mode = prev.appMode;
+      return { ...prev, [mode]: { ...prev[mode], destinations: prev[mode].destinations.filter(d => d.id !== id) } };
+    });
+  };
+
+  // Rende un blocco di campi per una destinazione. I predefiniti (Figlia/Lavoro)
+  // non hanno il pulsante di rimozione; gli extra sì.
+  const renderDestination = (dest: Destination, index: number) => {
+    const icon = dest.id === 'daughter' ? <Heart size={18} /> : dest.id === 'work' ? <Briefcase size={18} /> : <MapPin size={18} />;
+    const iconWrap = dest.id === 'daughter' ? 'bg-pink-50 text-pink-600' : dest.id === 'work' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600';
+    const ring = 'focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50';
+    return (
+      <div key={dest.id} className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100 space-y-6">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-xl ${iconWrap}`}>{icon}</div>
+          <div className="flex-1 min-w-0">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-slate-800 block truncate">
+              {dest.label || dest.short || `Punto di Riferimento ${index + 1}`}
+            </span>
+            <p className="text-[9px] text-slate-500 uppercase font-medium">Usato per il calcolo delle distanze</p>
+          </div>
+          {!dest.isDefault && (
+            <button
+              onClick={() => removeDestination(dest.id)}
+              className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+              title="Rimuovi questo punto di riferimento"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome</label>
+            <input
+              type="text"
+              value={dest.label}
+              onChange={(e) => updateDestination(dest.id, 'label', e.target.value)}
+              className={`w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-300 ${ring}`}
+              placeholder="Es: Palestra, Scuola..."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Sigla</label>
+            <input
+              type="text"
+              value={dest.short}
+              onChange={(e) => updateDestination(dest.id, 'short', e.target.value)}
+              className={`w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-300 ${ring}`}
+              placeholder="Es: Pal, Scu"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          <div className="col-span-3 space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Indirizzo (Via/Piazza)</label>
+            <div className="relative group">
+              <input
+                type="text"
+                value={dest.address || ''}
+                onChange={(e) => updateDestination(dest.id, 'address', e.target.value)}
+                className={`w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-300 ${ring}`}
+                placeholder="Via Emilia..."
+              />
+              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
+            </div>
+          </div>
+          <div className="col-span-1 space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Civico</label>
+            <input
+              type="text"
+              value={dest.houseNumber || ''}
+              onChange={(e) => updateDestination(dest.id, 'houseNumber', e.target.value)}
+              className={`w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 outline-none transition-all ${ring}`}
+              placeholder="3/N"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-5">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">CAP</label>
+            <input
+              type="text"
+              value={dest.zip || ''}
+              onChange={(e) => updateDestination(dest.id, 'zip', e.target.value)}
+              className={`w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 outline-none transition-all ${ring}`}
+              placeholder="40100"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Città</label>
+            <input
+              type="text"
+              value={dest.city || ''}
+              onChange={(e) => updateDestination(dest.id, 'city', e.target.value)}
+              className={`w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-300 ${ring}`}
+              placeholder="Bologna"
+            />
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <p className="text-[10px] text-slate-400 mb-3 font-bold uppercase tracking-widest ml-1">Precisione Extra: Coordinate GPS</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">Latitudine</label>
+              <input
+                type="number"
+                step="any"
+                value={dest.lat || 0}
+                onChange={(e) => updateDestination(dest.id, 'lat', e.target.value)}
+                className="w-full bg-slate-100/50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-mono text-slate-500 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500/30 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">Longitudine</label>
+              <input
+                type="number"
+                step="any"
+                value={dest.lng || 0}
+                onChange={(e) => updateDestination(dest.id, 'lng', e.target.value)}
+                className="w-full bg-slate-100/50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-mono text-slate-500 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500/30 outline-none transition-all"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -149,223 +288,16 @@ const handleReset = async () => {
                   </div>
                 </div>
 
-                {/* Destination 1 */}
-                <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100 space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-pink-50 rounded-xl text-pink-600">
-                      <Heart size={18} />
-                    </div>
-                    <div>
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-800 block">Punto di Riferimento 1</span>
-                      <p className="text-[9px] text-slate-500 uppercase font-medium">Usato per il calcolo delle distanze</p>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome Breve</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.daughter.label}
-                        onChange={(e) => updateDestination('daughter', 'label', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-pink-500/10 focus:border-pink-500/50 outline-none transition-all placeholder:text-slate-300"
-                        placeholder="Es: Palestra, Scuola..."
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Sigla / Label</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.daughter.short}
-                        onChange={(e) => updateDestination('daughter', 'short', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-pink-500/10 focus:border-pink-500/50 outline-none transition-all placeholder:text-slate-300"
-                        placeholder="Es: Pal, Scu"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="col-span-3 space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Indirizzo (Via/Piazza)</label>
-                      <div className="relative group">
-                        <input
-                          type="text"
-                          value={localSettings[localSettings.appMode].destinations.daughter.address || ''}
-                          onChange={(e) => updateDestination('daughter', 'address', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-pink-500/10 focus:border-pink-500/50 outline-none transition-all placeholder:text-slate-300"
-                          placeholder="Via Emilia..."
-                        />
-                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-pink-500 transition-colors" size={16} />
-                      </div>
-                    </div>
-                    <div className="col-span-1 space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Civico</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.daughter.houseNumber || ''}
-                        onChange={(e) => updateDestination('daughter', 'houseNumber', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 focus:ring-4 focus:ring-pink-500/10 focus:border-pink-500/50 outline-none transition-all"
-                        placeholder="3/N"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">CAP</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.daughter.zip || ''}
-                        onChange={(e) => updateDestination('daughter', 'zip', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 focus:ring-4 focus:ring-pink-500/10 focus:border-pink-500/50 outline-none transition-all"
-                        placeholder="40100"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Città</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.daughter.city || ''}
-                        onChange={(e) => updateDestination('daughter', 'city', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-pink-500/10 focus:border-pink-500/50 outline-none transition-all placeholder:text-slate-300"
-                        placeholder="Bologna"
-                      />
-                    </div>
-                  </div>
+                {/* Punti di riferimento (lista dinamica: i primi due sono fissi, gli altri aggiungibili) */}
+                {localSettings[localSettings.appMode].destinations.map((dest, i) => renderDestination(dest, i))}
 
-                  <div className="pt-2">
-                    <p className="text-[10px] text-slate-400 mb-3 font-bold uppercase tracking-widest ml-1">Precisione Extra: Coordinate GPS</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">Latitudine</label>
-                        <input
-                          type="number"
-                          step="any"
-                          value={localSettings[localSettings.appMode].destinations.daughter.lat || 0}
-                          onChange={(e) => updateDestination('daughter', 'lat', e.target.value)}
-                          className="w-full bg-slate-100/50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-mono text-slate-500 focus:bg-white focus:ring-4 focus:ring-pink-500/5 focus:border-pink-500/30 outline-none transition-all"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">Longitudine</label>
-                        <input
-                          type="number"
-                          step="any"
-                          value={localSettings[localSettings.appMode].destinations.daughter.lng || 0}
-                          onChange={(e) => updateDestination('daughter', 'lng', e.target.value)}
-                          className="w-full bg-slate-100/50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-mono text-slate-500 focus:bg-white focus:ring-4 focus:ring-pink-500/5 focus:border-pink-500/30 outline-none transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Destination 2 */}
-                <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100 space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
-                      <Briefcase size={18} />
-                    </div>
-                    <div>
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-800 block">Punto di Riferimento 2</span>
-                      <p className="text-[9px] text-slate-500 uppercase font-medium">Usato per il calcolo delle distanze</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome Breve</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.work.label}
-                        onChange={(e) => updateDestination('work', 'label', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all placeholder:text-slate-300"
-                        placeholder="Es: Lavoro, Famiglia..."
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Sigla / Label</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.work.short}
-                        onChange={(e) => updateDestination('work', 'short', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all placeholder:text-slate-300"
-                        placeholder="Es: Lav, Fam"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="col-span-3 space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Indirizzo (Via/Piazza)</label>
-                      <div className="relative group">
-                        <input
-                          type="text"
-                          value={localSettings[localSettings.appMode].destinations.work.address || ''}
-                          onChange={(e) => updateDestination('work', 'address', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all placeholder:text-slate-300"
-                          placeholder="Via Emilia..."
-                        />
-                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
-                      </div>
-                    </div>
-                    <div className="col-span-1 space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Civico</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.work.houseNumber || ''}
-                        onChange={(e) => updateDestination('work', 'houseNumber', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all"
-                        placeholder="3/N"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">CAP</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.work.zip || ''}
-                        onChange={(e) => updateDestination('work', 'zip', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all"
-                        placeholder="40100"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Città</label>
-                      <input
-                        type="text"
-                        value={localSettings[localSettings.appMode].destinations.work.city || ''}
-                        onChange={(e) => updateDestination('work', 'city', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all placeholder:text-slate-300"
-                        placeholder="Bologna"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2">
-                    <p className="text-[10px] text-slate-400 mb-3 font-bold uppercase tracking-widest ml-1">Precisione Extra: Coordinate GPS</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">Latitudine</label>
-                        <input
-                          type="number"
-                          step="any"
-                          value={localSettings[localSettings.appMode].destinations.work.lat || 0}
-                          onChange={(e) => updateDestination('work', 'lat', e.target.value)}
-                          className="w-full bg-slate-100/50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-mono text-slate-500 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500/30 outline-none transition-all"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">Longitudine</label>
-                        <input
-                          type="number"
-                          step="any"
-                          value={localSettings[localSettings.appMode].destinations.work.lng || 0}
-                          onChange={(e) => updateDestination('work', 'lng', e.target.value)}
-                          className="w-full bg-slate-100/50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-mono text-slate-500 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500/30 outline-none transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <button
+                  onClick={addDestination}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-3xl border-2 border-dashed border-slate-200 text-slate-500 text-sm font-bold hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/30 transition-all active:scale-[0.99]"
+                >
+                  <Plus size={18} />
+                  Aggiungi punto di riferimento
+                </button>
             </div>
 
             {/* Sticky Footer */}
