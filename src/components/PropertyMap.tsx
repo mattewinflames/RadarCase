@@ -2,9 +2,17 @@ import React from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, ZoomControl, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { House, UserSettings } from '../types';
-import { Home as HomeIcon, Briefcase, User as UserIcon, ExternalLink, AlertCircle, ChevronDown } from 'lucide-react';
+import { House, UserSettings, Destination } from '../types';
+import { Home as HomeIcon, Briefcase, User as UserIcon, ExternalLink, AlertCircle, ChevronDown, MapPin } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+// Colori dei punti di riferimento (distinti dal blu #2563eb degli immobili).
+// I primi due combaciano con figlia (verde) e lavoro (ambra); gli extra ciclano.
+const DEST_COLORS = ['#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#ef4444', '#0ea5e9'];
+const destColor = (i: number) => DEST_COLORS[i % DEST_COLORS.length];
+const destIconEl = (d: Destination, size = 18) =>
+  d.id === 'daughter' ? <UserIcon size={size} /> : d.id === 'work' ? <Briefcase size={size} /> : <MapPin size={size} />;
+const destName = (d: Destination, i: number) => d.label || d.short || `Destinazione ${i + 1}`;
 
 // Fix for default marker icon in Leaflet + React
 // We use custom icons for everything to avoid path issues
@@ -55,8 +63,7 @@ function SetViewOnSelection({ houses, settings }: { houses: House[], settings: U
 
     const allPoints: [number, number][] = [
       ...validPoints.map(p => [p.lat!, p.lng!] as [number, number]),
-      ...(dest.daughter.lat && dest.daughter.lng ? [[dest.daughter.lat, dest.daughter.lng] as [number, number]] : []),
-      ...(dest.work.lat && dest.work.lng ? [[dest.work.lat, dest.work.lng] as [number, number]] : []),
+      ...dest.filter(d => d.lat && d.lng).map(d => [d.lat, d.lng] as [number, number]),
     ];
 
     if (allPoints.length > 0) {
@@ -156,36 +163,24 @@ export default function PropertyMap({ houses, onSelectHouse, settings }: Props) 
         />
         <ZoomControl position="topright" />
         
-        {/* Target Locations Markers - renderizzati solo se hanno coordinate reali,
-            altrimenti si creerebbero marker "fantasma" al centro di Bologna con etichetta vuota.
-            Il doppio ! forza un booleano: con lat/lng a 0 (default) React renderizzerebbe "0". */}
-        {!!(settings[settings.appMode].destinations.daughter.lat && settings[settings.appMode].destinations.daughter.lng) && (
-          <Marker 
-            position={[settings[settings.appMode].destinations.daughter.lat, settings[settings.appMode].destinations.daughter.lng]} 
-            icon={createCustomIcon(<UserIcon size={18} />, '#10b981', 'square')}
-          >
-            <Popup>
-              <div className="p-1">
-                <p className="font-bold text-xs">{settings[settings.appMode].destinations.daughter.label}</p>
-                <p className="text-[10px] text-slate-500">{settings[settings.appMode].destinations.daughter.address}</p>
-              </div>
-            </Popup>
-          </Marker>
-        )}
-
-        {!!(settings[settings.appMode].destinations.work.lat && settings[settings.appMode].destinations.work.lng) && (
-          <Marker 
-            position={[settings[settings.appMode].destinations.work.lat, settings[settings.appMode].destinations.work.lng]} 
-            icon={createCustomIcon(<Briefcase size={18} />, '#f59e0b', 'square')}
-          >
-            <Popup>
-              <div className="p-1">
-                <p className="font-bold text-xs">{settings[settings.appMode].destinations.work.label}</p>
-                <p className="text-[10px] text-slate-500">{settings[settings.appMode].destinations.work.address}</p>
-              </div>
-            </Popup>
-          </Marker>
-        )}
+        {/* Marker dei punti di riferimento (uno per destinazione, badge quadrato colorato).
+            Renderizzati solo con coordinate reali; il !! evita che React stampi "0" con lat/lng a 0. */}
+        {settings[settings.appMode].destinations.map((d, i) => (
+          !!(d.lat && d.lng) && (
+            <Marker
+              key={d.id}
+              position={[d.lat, d.lng]}
+              icon={createCustomIcon(destIconEl(d), destColor(i), 'square')}
+            >
+              <Popup>
+                <div className="p-1">
+                  <p className="font-bold text-xs">{destName(d, i)}</p>
+                  <p className="text-[10px] text-slate-500">{d.address}</p>
+                </div>
+              </Popup>
+            </Marker>
+          )
+        ))}
 
         {/* Houses Markers (Lazy Loaded) */}
         <LazyMarkers houses={mapHouses} onSelectHouse={onSelectHouse} />
@@ -238,19 +233,14 @@ export default function PropertyMap({ houses, onSelectHouse, settings }: Props) 
            </div>
          )}
 
-         {!!(dest.daughter.lat && dest.daughter.lng) && (
-           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-[9px] flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: '#10b981' }}><UserIcon size={14} /></div>
-             <span className="text-[11px] font-bold text-slate-700">{dest.daughter.label || 'Destinazione 1'}</span>
-           </div>
-         )}
-
-         {!!(dest.work.lat && dest.work.lng) && (
-           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-[9px] flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: '#f59e0b' }}><Briefcase size={14} /></div>
-             <span className="text-[11px] font-bold text-slate-700">{dest.work.label || 'Destinazione 2'}</span>
-           </div>
-         )}
+         {dest.map((d, i) => (
+           !!(d.lat && d.lng) && (
+             <div key={d.id} className="flex items-center gap-3">
+               <div className="w-8 h-8 rounded-[9px] flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: destColor(i) }}>{destIconEl(d, 14)}</div>
+               <span className="text-[11px] font-bold text-slate-700">{destName(d, i)}</span>
+             </div>
+           )
+         ))}
 
          {houses.some(h => h.geocodingFailed) && (
            <div className="flex items-center gap-3">
