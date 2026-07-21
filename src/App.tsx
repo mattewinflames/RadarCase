@@ -24,7 +24,7 @@ import MapPage from './pages/MapPage';
 import DocumentArchive from './components/DocumentArchive';
 import Logo from './components/Logo';
 import SettingsModal from './components/SettingsModal';
-import { House, BuyingStep, UserSettings, DEFAULT_SETTINGS } from './types';
+import { House, BuyingStep, UserSettings, DEFAULT_SETTINGS, Destination, CommuteInfo, migrateSettings } from './types';
 import { useDragScroll } from './hooks/useDragScroll';
 import { 
   auth, 
@@ -50,7 +50,7 @@ import {
   getDocFromServer
 } from './lib/firebase';
 
-type SortOption = 'date' | 'price' | 'sqm' | 'score' | 'distance_arianna' | 'distance_work';
+type SortOption = 'date' | 'price' | 'sqm' | 'score' | `distance_${string}`;
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -111,26 +111,18 @@ export default function App() {
 
   const sortedHouses = useMemo(() => {
     const filtered = houses.filter(h => (h.type || 'buy') === userSettings.appMode);
-    const mode = userSettings.appMode;
-    const dest = userSettings[mode].destinations;
 
     return filtered.sort((a, b) => {
+      if (typeof sortBy === 'string' && sortBy.startsWith('distance_')) {
+        const destId = sortBy.slice('distance_'.length);
+        const da = parseFloat((a.commute?.[destId]?.distance || '999').toString());
+        const db = parseFloat((b.commute?.[destId]?.distance || '999').toString());
+        return (isNaN(da) ? 999 : da) - (isNaN(db) ? 999 : db);
+      }
       switch (sortBy) {
         case 'price': return a.price - b.price;
         case 'sqm': return (b.sqm || 0) - (a.sqm || 0);
         case 'score': return (b.score || 0) - (a.score || 0);
-        case 'distance_arianna': 
-          const distA = parseFloat((a.commute?.daughter.distance || '999').toString());
-          const distB = parseFloat((b.commute?.daughter.distance || '999').toString());
-          const safeA = isNaN(distA) ? 999 : distA;
-          const safeB = isNaN(distB) ? 999 : distB;
-          return safeA - safeB;
-        case 'distance_work':
-          const wA = parseFloat((a.commute?.work.distance || '999').toString());
-          const wB = parseFloat((b.commute?.work.distance || '999').toString());
-          const safeWA = isNaN(wA) ? 999 : wA;
-          const safeWB = isNaN(wB) ? 999 : wB;
-          return safeWA - safeWB;
         default: return b.createdAt - a.createdAt;
       }
     });
@@ -262,6 +254,20 @@ export default function App() {
     return { distance: (R * c).toFixed(1), duration: '' };
   };
 
+  // Calcola i tempi/distanze verso TUTTE le destinazioni, restituendo una mappa per id.
+  const computeCommute = async (lat: number, lng: number, destinations: Destination[]): Promise<Record<string, CommuteInfo>> => {
+    const commute: Record<string, CommuteInfo> = {};
+    for (const d of destinations) {
+      if (d.lat !== 0 && d.lng !== 0) {
+        const r = await getRouteInfo(lat, lng, d.lat, d.lng);
+        commute[d.id] = { distance: r.distance, duration: r.duration };
+      } else {
+        commute[d.id] = { distance: '', duration: '' };
+      }
+    }
+    return commute;
+  };
+
   const performGeocoding = async (house: House) => {
     const tryGeocode = async (query: string) => {
       try {
@@ -337,26 +343,15 @@ export default function App() {
       
       if (result) {
         const { lat, lng } = result;
-        
+
         const mode = userSettings.appMode;
-        const currentDest = userSettings[mode].destinations;
-
-        const routeArianna = (currentDest.daughter.lat !== 0 && currentDest.daughter.lng !== 0)
-          ? await getRouteInfo(lat, lng, currentDest.daughter.lat, currentDest.daughter.lng)
-          : { distance: '', duration: '' };
-
-        const routeWork = (currentDest.work.lat !== 0 && currentDest.work.lng !== 0)
-          ? await getRouteInfo(lat, lng, currentDest.work.lat, currentDest.work.lng)
-          : { distance: '', duration: '' };
+        const commute = await computeCommute(lat, lng, userSettings[mode].destinations);
 
         await updateHouse(house.id, {
           lat,
           lng,
           geocodingFailed: false,
-          commute: {
-            daughter: { distance: routeArianna.distance, duration: routeArianna.duration },
-            work: { distance: routeWork.distance, duration: routeWork.duration }
-          }
+          commute
         });
       } else {
         console.warn("Geocoding returned no results for:", house.location);
@@ -452,25 +447,9 @@ export default function App() {
         const settingsSnap = await getDoc(settingsRef);
         if (settingsSnap.exists()) {
           const data = settingsSnap.data();
-          // Migration: support old structure (destinations at top level)
-          const oldDest = data.destinations;
-
-          setUserSettings({
-            ...DEFAULT_SETTINGS,
-            ...data,
-            buy: {
-              destinations: { 
-                daughter: { ...DEFAULT_SETTINGS.buy.destinations.daughter, ...(oldDest?.daughter || data.buy?.destinations?.daughter) },
-                work: { ...DEFAULT_SETTINGS.buy.destinations.work, ...(oldDest?.work || data.buy?.destinations?.work) }
-              }
-            },
-            rent: {
-              destinations: { 
-                daughter: { ...DEFAULT_SETTINGS.rent.destinations.daughter, ...(oldDest?.daughter || data.rent?.destinations?.daughter) },
-                work: { ...DEFAULT_SETTINGS.rent.destinations.work, ...(oldDest?.work || data.rent?.destinations?.work) }
-              }
-            }
-          } as UserSettings);
+          // Migrazione: converte il vecchio formato { daughter, work } nel nuovo array,
+          // preservando dati e id dei predefiniti. Vedi migrateSettings in types.ts.
+          setUserSettings(migrateSettings(data));
         }
 
         // Lettura riuscita (che il documento esista o no): da qui è sicuro salvare.
@@ -567,17 +546,14 @@ export default function App() {
 
     // Check if addresses changed to trigger destination geocoding for the current mode
     const mode = newSettings.appMode;
-    const oldDest = userSettings[mode].destinations;
-    const currentDest = newSettings[mode].destinations;
+    const oldDests = userSettings[mode].destinations;
+    const currentDests = newSettings[mode].destinations;
 
-    const daughterAddressChanged = currentDest.daughter.address !== oldDest.daughter.address || currentDest.daughter.houseNumber !== oldDest.daughter.houseNumber;
-    const workAddressChanged = currentDest.work.address !== oldDest.work.address || currentDest.work.houseNumber !== oldDest.work.houseNumber;
-    
     // Copia PROFONDA: prima era uno spread shallow, quindi scrivere lat/lng qui sotto
     // mutava gli oggetti annidati condivisi con lo stato del form. Con structuredClone
     // lavoriamo su una copia isolata e lo stato del modale non viene toccato.
     const updatedSettings: UserSettings = structuredClone(newSettings);
-    
+
     const geocodeDest = async (dest: any) => {
       try {
         let queryStr = dest.address.trim();
@@ -600,47 +576,35 @@ export default function App() {
       return null;
     };
 
-    if ((daughterAddressChanged || currentDest.daughter.zip !== oldDest.daughter.zip || currentDest.daughter.city !== oldDest.daughter.city) && currentDest.daughter.address) {
-      const coords = await geocodeDest(currentDest.daughter);
-      if (coords) {
-        updatedSettings[mode].destinations.daughter.lat = coords.lat;
-        updatedSettings[mode].destinations.daughter.lng = coords.lng;
-      }
-    }
-    
-    if ((workAddressChanged || currentDest.work.zip !== oldDest.work.zip || currentDest.work.city !== oldDest.work.city) && currentDest.work.address) {
-      const coords = await geocodeDest(currentDest.work);
-      if (coords) {
-        updatedSettings[mode].destinations.work.lat = coords.lat;
-        updatedSettings[mode].destinations.work.lng = coords.lng;
+    // Rigeocodifica ogni destinazione il cui indirizzo è cambiato (o è nuova).
+    for (let i = 0; i < currentDests.length; i++) {
+      const cur = currentDests[i];
+      const old = oldDests.find(d => d.id === cur.id);
+      const changed = !old
+        || cur.address !== old.address
+        || cur.houseNumber !== old.houseNumber
+        || cur.zip !== old.zip
+        || cur.city !== old.city;
+      if (changed && cur.address) {
+        const coords = await geocodeDest(cur);
+        if (coords) {
+          updatedSettings[mode].destinations[i].lat = coords.lat;
+          updatedSettings[mode].destinations[i].lng = coords.lng;
+        }
       }
     }
 
     setUserSettings(updatedSettings);
     await setDoc(doc(db, 'userSettings', user.uid), updatedSettings);
-    
-    // Trigger re-calculation of distances for all houses (of the current mode)
+
+    // Ricalcola le distanze di tutti gli immobili della modalità corrente.
     const updatePromises = houses.map(async h => {
       const houseMode = h.type || 'buy';
       if (houseMode !== mode) return Promise.resolve();
 
       if (h.lat && h.lng) {
-        const dests = updatedSettings[mode].destinations;
-
-        const routeArianna = (dests.daughter.lat !== 0 && dests.daughter.lng !== 0)
-          ? await getRouteInfo(h.lat, h.lng, dests.daughter.lat, dests.daughter.lng)
-          : { distance: '', duration: '' };
-
-        const routeWork = (dests.work.lat !== 0 && dests.work.lng !== 0)
-          ? await getRouteInfo(h.lat, h.lng, dests.work.lat, dests.work.lng)
-          : { distance: '', duration: '' };
-
-        return updateHouse(h.id, {
-          commute: {
-            daughter: { distance: routeArianna.distance, duration: routeArianna.duration },
-            work: { distance: routeWork.distance, duration: routeWork.duration }
-          }
-        });
+        const commute = await computeCommute(h.lat, h.lng, updatedSettings[mode].destinations);
+        return updateHouse(h.id, { commute });
       }
       return Promise.resolve();
     });
@@ -1039,8 +1003,11 @@ export default function App() {
                           { id: 'price', label: 'Prezzo', icon: Euro },
                           { id: 'sqm', label: 'Mq²', icon: LayoutGrid },
                           { id: 'score', label: 'Voto', icon: Heart },
-                          { id: 'distance_arianna', label: userSettings[userSettings.appMode].destinations.daughter.label || 'Dest. 1', icon: MapPin },
-                          { id: 'distance_work', label: userSettings[userSettings.appMode].destinations.work.label || 'Dest. 2', icon: MapPin },
+                          ...userSettings[userSettings.appMode].destinations.map((d, i) => ({
+                            id: `distance_${d.id}`,
+                            label: d.label || d.short || `Dest. ${i + 1}`,
+                            icon: MapPin
+                          })),
                         ].map(opt => (
                           <button
                             key={opt.id}
