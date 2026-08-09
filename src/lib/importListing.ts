@@ -29,6 +29,8 @@ export type ImportDraft = {
   contract?: 'buy' | 'rent';
   /** da dove arriva: serve solo per i messaggi a schermo */
   source?: string;
+  /** sintesi AI della descrizione dell'annuncio, da mettere nelle note */
+  notes?: string;
 };
 
 export interface ImportPayload {
@@ -160,13 +162,42 @@ export function normalizeExact(data: any, url: string): ImportDraft {
 }
 
 /* ------------------------------------------------------------------ */
+/* Sintesi AI della descrizione -> note                                 */
+/* ------------------------------------------------------------------ */
+
+const SUMMARY_PROMPT = `Sintetizza la seguente descrizione di un annuncio immobiliare tenendo SOLO le informazioni utili a valutare l'immobile: stato reale e lavori necessari, esposizione/luminosità, pertinenze (cantina, garage, posto auto, giardino, terrazzo), spese, vincoli o note legali, dettagli non deducibili dai dati strutturati. Ometti il linguaggio promozionale ("splendido", "curato nei minimi dettagli", "occasione unica") e le frasi generiche.
+
+Restituisci un oggetto JSON: {"summary": "sintesi in 2-4 frasi brevi in italiano"}. Se non c'è nulla di realmente utile, usa stringa vuota. Rispondi SOLO con il JSON.
+
+DESCRIZIONE:
+`;
+
+export async function summarizeDescription(text: string): Promise<string> {
+  const clean = (text || '').trim();
+  if (clean.length < 40) return ''; // troppo corta per valere una sintesi
+  try {
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: SUMMARY_PROMPT + clean.slice(0, 6000), type: 'analysis' })
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    const parsed = JSON.parse(String(data.result || '').trim());
+    return String(parsed.summary || '').trim().slice(0, 800);
+  } catch (e) {
+    return ''; // la sintesi è un extra: se fallisce, l'import prosegue senza note
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Altri portali: estrazione dal testo tramite Gemini                   */
 /* ------------------------------------------------------------------ */
 
 const EXTRACTION_PROMPT = `Sei un estrattore di dati da annunci immobiliari italiani.
 Dal TESTO qui sotto estrai un oggetto JSON con ESATTAMENTE queste chiavi, usando null quando il dato non e' presente:
 
-{"title":string,"price":number,"sqm":number,"location":string,"yearBuilt":number,"floor":number,"kwh":number,"energyClass":string,"heating":string,"condition":string,"condoFees":number}
+{"title":string,"price":number,"sqm":number,"location":string,"yearBuilt":number,"floor":number,"kwh":number,"energyClass":string,"heating":string,"condition":string,"condoFees":number,"notesSummary":string}
 
 Regole rigide:
 - price: prezzo di vendita o canone in euro, solo numero intero senza separatori (es. 120000)
@@ -179,6 +210,7 @@ Regole rigide:
 - heating: una sola tra "autonomo","centralizzato","assente"
 - condition: una sola tra "ottimo","ristrutturato","buono","da_ristrutturare". Mappa "buono stato" e "abitabile" su "buono"
 - condoFees: spese condominiali mensili in euro, solo numero
+- notesSummary: sintesi in 2-4 frasi brevi della DESCRIZIONE dell'inserzionista, tenendo solo le info utili a valutare (stato/lavori, pertinenze, esposizione, spese, vincoli, dettagli non ovvi). Ometti marketing e frasi generiche. Stringa vuota se non c'è nulla di utile.
 - Ignora menu, banner, cookie e annunci correlati: considera solo l'immobile principale
 - Rispondi SOLO con il JSON, senza testo attorno.
 
@@ -227,6 +259,7 @@ export async function parseTextWithAI(payload: ImportPayload): Promise<ImportDra
     heating: mapHeating(parsed.heating),
     condition: mapCondition(parsed.condition),
     condoFees: toNumber(parsed.condoFees),
+    notes: (parsed.notesSummary && String(parsed.notesSummary).trim()) || undefined,
     source: host || 'annuncio'
   };
 
@@ -238,6 +271,15 @@ export async function parseTextWithAI(payload: ImportPayload): Promise<ImportDra
 /* ------------------------------------------------------------------ */
 
 export async function buildDraft(payload: ImportPayload): Promise<ImportDraft> {
-  if (payload.mode === 'exact') return normalizeExact(payload.data, payload.url);
+  if (payload.mode === 'exact') {
+    const draft = normalizeExact(payload.data, payload.url);
+    // Immobiliare fornisce la descrizione strutturata: la sintetizziamo per le note.
+    const desc = payload.data && payload.data.description;
+    if (desc) {
+      const notes = await summarizeDescription(String(desc));
+      if (notes) draft.notes = notes;
+    }
+    return draft;
+  }
   return parseTextWithAI(payload);
 }
