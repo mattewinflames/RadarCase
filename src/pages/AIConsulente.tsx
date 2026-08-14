@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, Send, Sparkles, Loader, MessageSquare, Map } from 'lucide-react';
 import { House, UserSettings, ChatMessage } from '../types';
 import Logo from '../components/Logo';
+import MarkdownLite from '../components/MarkdownLite';
 
 interface Props {
   houses: House[];
@@ -145,12 +146,12 @@ export default function AIConsulente({ houses, settings, messages, loading, onSe
                       <Sparkles size={14} className="text-white" />
                     </div>
                   )}
-                  <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                  <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     m.role === 'user'
-                      ? 'bg-indigo-600 text-white rounded-br-sm'
+                      ? 'bg-indigo-600 text-white rounded-br-sm whitespace-pre-wrap'
                       : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
                   }`}>
-                    {m.content}
+                    {m.role === 'assistant' ? <MarkdownLite text={m.content} /> : m.content}
                   </div>
                 </motion.div>
               ))}

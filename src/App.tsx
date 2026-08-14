@@ -21,6 +21,7 @@ import PropertyMap from './components/PropertyMap';
 import MapPage from './pages/MapPage';
 import AIConsulente from './pages/AIConsulente';
 import Logo from './components/Logo';
+import MarkdownLite from './components/MarkdownLite';
 import SettingsModal from './components/SettingsModal';
 import { House, UserSettings, DEFAULT_SETTINGS, Destination, CommuteInfo, migrateSettings, resolveVisitStatus, ChatMessage } from './types';
 import { useDragScroll } from './hooks/useDragScroll';
@@ -646,7 +647,7 @@ Non dare consigli generici sul mercato: cita sempre dati concreti di questi annu
 I "voti cuori" (1-5) sono sensazioni immediate. I "punteggi AI visita" (1-10) sono valutazioni qualitative post-visita.
 Puoi: confrontare, motivare classifiche, analizzare note di visita, suggerire domande per visite future, aiutare con controproposte.
 Non puoi: stime economiche precise, perizie, consigli legali.
-Rispondi in italiano, conciso e diretto, in PROSA discorsiva (mai in formato JSON o codice). Cita sempre gli immobili per nome; usa elenchi puntati solo se migliorano la leggibilità.
+Rispondi in italiano, conciso e diretto, in PROSA discorsiva (mai in formato JSON o codice). Cita sempre gli immobili per nome. Puoi usare **grassetto** per 2-3 punti chiave e un elenco puntato solo se davvero utile a confrontare più voci — evita di trasformare ogni risposta in una lista: la forma normale è il paragrafo.
 
 IMMOBILI SALVATI:
 ${context}${history ? `\n\n---\nCONVERSAZIONE PRECEDENTE:\n${history}\n---` : ''}
@@ -1248,17 +1249,20 @@ Rispondi a: ${text}`;
                       ))}
                     </div>
                   ) : (
-                    chatMessages.slice(-6).map((m, i) => (
-                      <div key={i} className={`flex ${m.role==='user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
-                          m.role==='user'
-                            ? 'bg-indigo-600 text-white rounded-br-sm'
-                            : 'bg-slate-100 text-slate-800 rounded-bl-sm'
-                        }`}>
-                          {m.content.length > 300 ? m.content.slice(0,300)+'…' : m.content}
+                    chatMessages.slice(-6).map((m, i) => {
+                      const truncated = m.content.length > 300 ? m.content.slice(0, 300) + '…' : m.content;
+                      return (
+                        <div key={i} className={`flex ${m.role==='user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                            m.role==='user'
+                              ? 'bg-indigo-600 text-white rounded-br-sm whitespace-pre-wrap'
+                              : 'bg-slate-100 text-slate-800 rounded-bl-sm'
+                          }`}>
+                            {m.role === 'assistant' ? <MarkdownLite text={truncated} /> : truncated}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                   {chatLoading && (
                     <div className="flex justify-start">
