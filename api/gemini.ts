@@ -9,6 +9,9 @@ export default async function handler(req: any, res: any) {
   }
 
   const isQuestions = type === 'questions';
+  // La chat del consulente vuole PROSA, non JSON: niente responseMimeType forzato,
+  // temperatura più naturale. Gli altri type ('analysis', 'questions') restano invariati.
+  const isChat = type === 'chat';
 
   // ✅ SOLO MODELLI ATTUALMENTE SUPPORTATI
   const models = [
@@ -37,10 +40,12 @@ export default async function handler(req: any, res: any) {
               { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
               { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
             ],
-            generationConfig: {
-              temperature: isQuestions ? 0.7 : 0.1,
-              responseMimeType: 'application/json'
-            }
+            generationConfig: isChat
+              ? { temperature: 0.6 }
+              : {
+                  temperature: isQuestions ? 0.7 : 0.1,
+                  responseMimeType: 'application/json'
+                }
           })
         }
       );

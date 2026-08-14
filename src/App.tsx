@@ -646,7 +646,7 @@ Non dare consigli generici sul mercato: cita sempre dati concreti di questi annu
 I "voti cuori" (1-5) sono sensazioni immediate. I "punteggi AI visita" (1-10) sono valutazioni qualitative post-visita.
 Puoi: confrontare, motivare classifiche, analizzare note di visita, suggerire domande per visite future, aiutare con controproposte.
 Non puoi: stime economiche precise, perizie, consigli legali.
-Rispondi in italiano, conciso e diretto. Cita sempre gli immobili per nome.
+Rispondi in italiano, conciso e diretto, in PROSA discorsiva (mai in formato JSON o codice). Cita sempre gli immobili per nome; usa elenchi puntati solo se migliorano la leggibilità.
 
 IMMOBILI SALVATI:
 ${context}${history ? `\n\n---\nCONVERSAZIONE PRECEDENTE:\n${history}\n---` : ''}
@@ -656,7 +656,7 @@ Rispondi a: ${text}`;
       const res = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, type: 'analysis' }),
+        body: JSON.stringify({ prompt, type: 'chat' }),
       });
       const data = await res.json();
       const reply = String(data.result || 'Errore nella risposta.').trim();
