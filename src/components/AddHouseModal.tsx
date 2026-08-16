@@ -19,6 +19,18 @@ interface Props {
   prefill?: ImportDraft | null;
 }
 
+/**
+ * Arrotondamento razionale del kWh/m² anno: sotto x.5 per difetto, da x.5 in
+ * su per eccesso. Applicato alla perdita di focus, così l'utente può digitare
+ * liberamente con decimali (211,29) e vede subito il valore pulito (211).
+ */
+function roundKwh(raw: string): string {
+  if (raw === '' || raw == null) return raw;
+  const n = Number(raw);
+  if (Number.isNaN(n)) return raw;
+  return String(Math.round(n));
+}
+
 export default function AddHouseModal({ onAdd, isOpen, onClose, appMode, prefill }: Props) {
   const [formData, setFormData] = useState({
     title: '',
@@ -407,9 +419,11 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode, prefill
                               type="number"
                               placeholder="es. 145"
                               min="0"
+                              step="any"
                               className={inputClass}
                               value={formData.kwh}
                               onChange={e => setFormData({...formData, kwh: e.target.value})}
+                              onBlur={e => setFormData({...formData, kwh: roundKwh(e.target.value)})}
                             />
                           </div>
                           <div>

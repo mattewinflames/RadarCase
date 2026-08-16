@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ExternalLink, MapPin, Trash2, Navigation, Check, AlertCircle, RefreshCw, MoreVertical, Sparkles, X, Edit2, Calendar, CalendarCheck, CalendarPlus } from 'lucide-react';
+import { ExternalLink, MapPin, Trash2, Navigation, Check, AlertCircle, RefreshCw, MoreVertical, Sparkles, X, Edit2, Calendar, CalendarCheck, CalendarPlus, FileText, Loader } from 'lucide-react';
 import { House, UserSettings, resolveVisitStatus } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { deleteField } from '../lib/firebase';
@@ -14,6 +14,19 @@ interface HouseCardProps {
   onRetryGeocoding?: (id: string) => Promise<void> | void;
   isSelected?: boolean;
   onSelect?: () => void;
+}
+
+/**
+ * Arrotondamento razionale del kWh/m² anno: sotto x.5 arrotonda per difetto,
+ * da x.5 in su per eccesso (Math.round standard). Il valore digitato può
+ * avere decimali (211,29 → 211); alla perdita di focus l'input mostra
+ * l'intero già "pulito", pronto per il salvataggio.
+ */
+function roundKwh(raw: string): string {
+  if (raw === '' || raw == null) return raw;
+  const n = Number(raw);
+  if (Number.isNaN(n)) return raw;
+  return String(Math.round(n));
 }
 
 const conditionLabel: Record<string, string> = {
@@ -96,6 +109,79 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onUpda
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [showAllCommutes, setShowAllCommutes] = useState(false);
   const [editingVisitedAt, setEditingVisitedAt] = useState(false);
+  // Pannello note post-visita
+  const [visitNotesOpen, setVisitNotesOpen] = useState(false);
+  const [visitNotesDraft, setVisitNotesDraft] = useState('');
+  const [scoringInProgress, setScoringInProgress] = useState(false);
+
+  // Apre il pannello sincronizzando la draft con il valore salvato
+  const openVisitNotes = () => {
+    setVisitNotesDraft(house.visitNotes || '');
+    setVisitNotesOpen(true);
+  };
+
+  const saveVisitNotes = () => {
+    const trimmed = visitNotesDraft.trim();
+    if (trimmed !== (house.visitNotes || '').trim()) {
+      onUpdate(house.id, { visitNotes: trimmed || undefined } as Partial<House>);
+    }
+    setVisitNotesOpen(false);
+  };
+
+  const handleScoreVisit = async () => {
+    setScoringInProgress(true);
+    try {
+      const pricePerSqm = house.sqm && house.sqm > 0
+        ? Math.round(house.price / house.sqm) : null;
+
+      let omiLine = '';
+      if (house.lat != null && house.lng != null && pricePerSqm) {
+        const omiRes = await getOmiAssessment(house.lat, house.lng, pricePerSqm);
+        if (omiRes?.assessment) {
+          omiLine = `Fascia OMI di zona (${omiRes.zone.comune}, ${omiRes.zone.zona}): ${omiRes.assessment.bandMin}–${omiRes.assessment.bandMax} €/m². Il prezzo/m² richiesto è ${omiRes.assessment.position} (${omiRes.assessment.deltaPct >= 0 ? '+' : ''}${omiRes.assessment.deltaPct}%).`;
+        }
+      }
+
+      const prevAnalysis = (assessment?.strengths.length || assessment?.concerns.length)
+        ? `Analisi pre-visita — Punti di forza: ${(assessment?.strengths || []).join('; ')}. Da verificare: ${(assessment?.concerns || []).join('; ')}.`
+        : '';
+
+      const prompt = `Sei un consulente immobiliare indipendente. Valuta questo immobile sulla base di TUTTI i dati disponibili, incluse le note scritte dall'acquirente dopo la visita.
+
+IMMOBILE: ${house.title}
+Prezzo: €${house.price.toLocaleString('it-IT')}${house.sqm ? ` — ${pricePerSqm} €/m²` : ''}
+Indirizzo: ${house.location}
+${house.yearBuilt ? `Anno: ${house.yearBuilt}` : ''}${house.condition ? ` | Stato: ${house.condition}` : ''}${house.floor !== undefined ? ` | Piano: ${house.floor}` : ''}${house.energyClass ? ` | Classe: ${house.energyClass}` : ''}${house.condoFees ? ` | Spese: €${house.condoFees}/mese` : ''}
+${omiLine}
+${prevAnalysis}
+NOTE DELLA VISITA (scritte dall'acquirente — peso maggiore per la valutazione):
+${house.visitNotes || '(nessuna nota di visita inserita)'}
+
+Assegna un punteggio da 1 a 10 che rifletta il VALORE INTRINSECO complessivo dell'immobile per un acquirente medio: qualità reale, stato, posizione, rapporto con il prezzo di zona. Non è un punteggio estetico né economico puro: considera anche vivibilità, potenziale e criticità concrete emerse dalla visita.
+
+Rispondi SOLO con questo JSON (senza markdown):
+{"score":number,"reason":"2-3 frasi concise in italiano che motivano il punteggio, citando elementi specifici","strengths_confirmed":["punto confermato in visita"],"concerns_confirmed":["criticità confermata in visita"]}`;
+
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, type: 'analysis' }),
+      });
+      const data = await response.json();
+      const parsed = JSON.parse(
+        String(data.result || '').trim().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+      );
+      onUpdate(house.id, {
+        visitScore: Math.min(10, Math.max(1, Math.round(Number(parsed.score)))),
+        visitScoreReason: String(parsed.reason || '').slice(0, 600),
+        visitScoreAt: Date.now(),
+      } as Partial<House>);
+    } catch (e) {
+      console.error('Valutazione visita fallita:', e);
+    } finally {
+      setScoringInProgress(false);
+    }
+  };
 
   // Stato visita corrente (migra automaticamente da visited: boolean)
   const currentStatus = resolveVisitStatus(house);
@@ -643,6 +729,102 @@ Regole rigide:
             </div>
           )}
 
+          {/* Note post-visita + punteggio AI — visibile solo dopo la visita */}
+          {currentStatus === 'visitata' && (
+            <div className="mb-4" onClick={e => e.stopPropagation()}>
+              {/* Toggle compatto */}
+              {!visitNotesOpen && (
+                <button
+                  onClick={openVisitNotes}
+                  className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+                >
+                  <FileText size={12} />
+                  {house.visitNotes ? 'Note visita · modifica' : 'Aggiungi note visita'}
+                  {house.visitScore !== undefined && (
+                    <span className="ml-2 px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[9px] font-bold">
+                      {house.visitScore}/10
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* Pannello espanso */}
+              {visitNotesOpen && (
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Note post-visita</p>
+                    <button
+                      onClick={() => setVisitNotesOpen(false)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <textarea
+                    value={visitNotesDraft}
+                    onChange={e => setVisitNotesDraft(e.target.value)}
+                    placeholder="Scrivi liberamente: impressioni, risposte dell'agente, difetti notati, punti di forza reali, confronto con le aspettative..."
+                    className="w-full h-28 text-sm bg-white border border-indigo-100 rounded-xl px-3 py-2.5 text-slate-700 placeholder:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-200 resize-none leading-relaxed"
+                    maxLength={3000}
+                    autoFocus
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400">{visitNotesDraft.length}/3000</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveVisitNotes}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-colors"
+                      >
+                        Salva
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Valutazione AI */}
+                  <div className="border-t border-indigo-100 pt-3">
+                    {house.visitScore !== undefined ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl font-bold text-indigo-700">{house.visitScore}</span>
+                            <span className="text-slate-400 font-light">/10</span>
+                            <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">Valore intrinseco AI</span>
+                          </div>
+                          <button
+                            onClick={handleScoreVisit}
+                            disabled={scoringInProgress}
+                            className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400 hover:text-indigo-600 transition-colors"
+                          >
+                            {scoringInProgress ? <Loader size={12} className="animate-spin" /> : <RefreshCw size={11} />}
+                            Ricalcola
+                          </button>
+                        </div>
+                        {house.visitScoreReason && (
+                          <p className="text-[11px] text-slate-600 leading-relaxed">{house.visitScoreReason}</p>
+                        )}
+                        {house.visitScoreAt && (
+                          <p className="text-[9px] text-slate-400">Calcolato il {new Date(house.visitScoreAt).toLocaleDateString('it-IT')}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleScoreVisit}
+                        disabled={scoringInProgress || !house.visitNotes}
+                        title={!house.visitNotes ? 'Salva almeno qualche nota prima di valutare' : ''}
+                        className="flex items-center gap-2 w-full justify-center py-2 rounded-xl bg-indigo-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {scoringInProgress
+                          ? <><Loader size={13} className="animate-spin" /> Valutazione in corso…</>
+                          : <><Sparkles size={13} /> Valuta con AI</>}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Commute — mostra i primi 2 punti, gli altri a espansione */}
           {(() => {
             const named = currentDestinations.filter(d => d.label || d.short);
@@ -1040,9 +1222,11 @@ Regole rigide:
                       type="number"
                       placeholder="es. 145"
                       min="0"
+                      step="any"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
                       value={detailsForm.kwh}
                       onChange={e => setDetailsForm({...detailsForm, kwh: e.target.value})}
+                      onBlur={e => setDetailsForm({...detailsForm, kwh: roundKwh(e.target.value)})}
                     />
                   </div>
                   <div>
