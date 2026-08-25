@@ -41,8 +41,6 @@ import {
   query,
   where,
   orderBy,
-  limit,
-  startAfter,
   setDoc,
   getDoc,
   checkRedirectResult,
@@ -95,9 +93,6 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [lastDoc, setLastDoc] = useState<any>(null);
   const [connectionError, setConnectionError] = useState(false);
   // True solo dopo aver letto con successo le impostazioni da Firestore almeno una volta.
   // Serve a NON sovrascrivere dati validi con i default vuoti prima che il caricamento sia avvenuto.
@@ -185,18 +180,14 @@ export default function App() {
     if (!user) return;
     setLoading(true);
     setHouses([]);
-    setLastDoc(null);
-    setHasMore(true);
-
-    // We use a query with a limit for the initial load
-    // Note: for real-time + pagination we usually listen to a base query 
-    // but for very large datasets, we fetch pages. 
-    // Here we'll start with a limit and provide a "load more" function.
+    // Carica tutti gli immobili dell'utente senza limite — con le dimensioni
+    // tipiche di questo tracker (decine di case, non migliaia) è la scelta
+    // corretta: onSnapshot mantiene tutto in tempo reale e il consulente AI
+    // vede sempre il portfolio completo.
     const q = query(
-      collection(db, 'houses'), 
+      collection(db, 'houses'),
       where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc'),
-      limit(10)
+      orderBy('createdAt', 'desc')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -204,10 +195,7 @@ export default function App() {
         ...doc.data(),
         id: doc.id
       })) as House[];
-      
       setHouses(housesData);
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === 10);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching houses:", error);
@@ -216,44 +204,6 @@ export default function App() {
 
     return () => unsubscribe();
   }, [user]);
-
-  const loadMoreHouses = async () => {
-    if (!user || loadingMore || !hasMore || !lastDoc) return;
-
-    setLoadingMore(true);
-    try {
-      const nextQuery = query(
-        collection(db, 'houses'),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc'),
-        startAfter(lastDoc),
-        limit(10)
-      );
-
-      // Page fetching usually doesn't use onSnapshot for subsequent pages 
-      // unless we want a complex real-time pagination system.
-      // For simplicity and typical "load more" behavior:
-      const { getDocs } = await import('firebase/firestore');
-      const snapshot = await getDocs(nextQuery);
-      
-      if (snapshot.empty) {
-        setHasMore(false);
-      } else {
-        const nextHouses = snapshot.docs.map(doc => ({
-          ...doc.data(),
-          id: doc.id
-        })) as House[];
-
-        setHouses(prev => [...prev, ...nextHouses]);
-        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-        setHasMore(snapshot.docs.length === 10);
-      }
-    } catch (error) {
-      console.error("Error loading more houses:", error);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
 
   // Helper for routing via OpenRouteService proxy (with straight-line fallback)
   const getRouteInfo = async (lat1: number, lng1: number, lat2: number, lng2: number): Promise<{ distance: string; duration: string }> => {
@@ -1007,25 +957,6 @@ Rispondi a: ${text}`;
                             />
                           </div>
                         ))}
-                        
-                        {hasMore && (
-                          <div className="min-w-[200px] flex items-center justify-center snap-start">
-                            <button
-                              onClick={loadMoreHouses}
-                              disabled={loadingMore}
-                              className="px-6 py-4 bg-white border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/30 transition-all flex flex-col items-center gap-2 group"
-                            >
-                              {loadingMore ? (
-                                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                              ) : (
-                                <>
-                                  <Plus className="w-6 h-6 group-hover:scale-120 transition-transform" />
-                                  <span className="text-[10px] font-bold uppercase tracking-widest">Carica Altri</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
                       </div>
 
                       {/* Desktop Navigation Arrows */}
