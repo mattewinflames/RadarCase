@@ -3,7 +3,8 @@ import { ExternalLink, MapPin, Trash2, Navigation, Check, AlertCircle, RefreshCw
 import { House, UserSettings, resolveVisitStatus } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { deleteField } from '../lib/firebase';
-import { getOmiAssessment, OmiResult, omiValueRange, suggestedOffer } from '../lib/omi';
+import { aiErrorReason } from '../lib/importListing';
+import { getOmiAssessment, OmiResult, omiValueRange, suggestedOffer, omiRentRange, omiPromptLine, formatPerSqm } from '../lib/omi';
 import HeartRating from './HeartRating';
 
 interface HouseCardProps {
@@ -102,17 +103,25 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onUpda
     rentalContractType: house.rentalContractType || '' as House['rentalContractType'] | '',
     condoFees: house.condoFees?.toString() || '',
   });
-  const [questions, setQuestions] = useState<string[]>([]);
-  // Valutazione fattuale generata insieme alle domande: punti di forza e criticità.
-  const [assessment, setAssessment] = useState<{ strengths: string[]; concerns: string[] } | null>(null);
+  const [questions, setQuestions] = useState<string[]>(
+    house.savedAnalysis?.questions || []
+  );
+  const [assessment, setAssessment] = useState<{ strengths: string[]; concerns: string[] } | null>(
+    house.savedAnalysis
+      ? { strengths: house.savedAnalysis.strengths, concerns: house.savedAnalysis.concerns }
+      : null
+  );
   const [checkedQuestions, setCheckedQuestions] = useState<Set<number>>(new Set());
   const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [updatingWithNotes, setUpdatingWithNotes] = useState(false);
   const [showAllCommutes, setShowAllCommutes] = useState(false);
   const [editingVisitedAt, setEditingVisitedAt] = useState(false);
   // Pannello note post-visita
   const [visitNotesOpen, setVisitNotesOpen] = useState(false);
   const [visitNotesDraft, setVisitNotesDraft] = useState('');
   const [scoringInProgress, setScoringInProgress] = useState(false);
+  // Motivo dell'ultimo errore AI (valutazione/aggiornamento post-visita), mostrato nel pannello note
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Apre il pannello sincronizzando la draft con il valore salvato
   const openVisitNotes = () => {
@@ -130,26 +139,23 @@ const HouseCard: React.FC<HouseCardProps> = ({ house, settings, onDelete, onUpda
 
   const handleScoreVisit = async () => {
     setScoringInProgress(true);
+    setAiError(null);
     try {
-      const pricePerSqm = house.sqm && house.sqm > 0
-        ? Math.round(house.price / house.sqm) : null;
-
-      let omiLine = '';
-      if (house.lat != null && house.lng != null && pricePerSqm) {
-        const omiRes = await getOmiAssessment(house.lat, house.lng, pricePerSqm);
-        if (omiRes?.assessment) {
-          omiLine = `Fascia OMI di zona (${omiRes.zone.comune}, ${omiRes.zone.zona}): ${omiRes.assessment.bandMin}–${omiRes.assessment.bandMax} €/m². Il prezzo/m² richiesto è ${omiRes.assessment.position} (${omiRes.assessment.deltaPct >= 0 ? '+' : ''}${omiRes.assessment.deltaPct}%).`;
-        }
+      let omiRes = omi;
+      if (!omiRes && house.lat != null && house.lng != null && house.sqm) {
+        omiRes = await getOmiAssessment(house.lat, house.lng, house.price, house.sqm, contractMode);
       }
+      const omiLine = omiPromptLine(omiRes);
 
       const prevAnalysis = (assessment?.strengths.length || assessment?.concerns.length)
         ? `Analisi pre-visita — Punti di forza: ${(assessment?.strengths || []).join('; ')}. Da verificare: ${(assessment?.concerns || []).join('; ')}.`
         : '';
 
-      const prompt = `Sei un consulente immobiliare indipendente. Valuta questo immobile sulla base di TUTTI i dati disponibili, incluse le note scritte dall'acquirente dopo la visita.
+      const prompt = `Sei un consulente immobiliare indipendente. Valuta questo immobile sulla base di TUTTI i dati disponibili, incluse le note scritte ${contractMode === 'rent' ? "dall'aspirante inquilino" : "dall'acquirente"} dopo la visita.
 
 IMMOBILE: ${house.title}
-Prezzo: €${house.price.toLocaleString('it-IT')}${house.sqm ? ` — ${pricePerSqm} €/m²` : ''}
+Contratto: ${contractMode === 'rent' ? 'Affitto' : 'Acquisto'}
+${priceLine}
 Indirizzo: ${house.location}
 ${house.yearBuilt ? `Anno: ${house.yearBuilt}` : ''}${house.condition ? ` | Stato: ${house.condition}` : ''}${house.floor !== undefined ? ` | Piano: ${house.floor}` : ''}${house.energyClass ? ` | Classe: ${house.energyClass}` : ''}${house.condoFees ? ` | Spese: €${house.condoFees}/mese` : ''}
 ${omiLine}
@@ -167,7 +173,8 @@ Rispondi SOLO con questo JSON (senza markdown):
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, type: 'analysis' }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.result) throw new Error(aiErrorReason(data));
       const parsed = JSON.parse(
         String(data.result || '').trim().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
       );
@@ -178,6 +185,7 @@ Rispondi SOLO con questo JSON (senza markdown):
       } as Partial<House>);
     } catch (e) {
       console.error('Valutazione visita fallita:', e);
+      setAiError(e instanceof Error ? e.message : 'errore sconosciuto');
     } finally {
       setScoringInProgress(false);
     }
@@ -185,6 +193,16 @@ Rispondi SOLO con questo JSON (senza markdown):
 
   // Stato visita corrente (migra automaticamente da visited: boolean)
   const currentStatus = resolveVisitStatus(house);
+
+  // Tipo di contratto: decide unità del prezzo (totale vs mensile) e fascia OMI
+  // (compravendita €/m² vs locazione €/m²/mese) in chip, analisi e prompt AI.
+  const contractMode: 'buy' | 'rent' = (house.type || 'buy') === 'rent' ? 'rent' : 'buy';
+  const pricePerSqmLabel = house.sqm && house.sqm > 0
+    ? formatPerSqm(house.price / house.sqm, contractMode)
+    : null;
+  const priceLine = contractMode === 'rent'
+    ? `Canone: €${house.price.toLocaleString('it-IT')}/mese${pricePerSqmLabel ? ` (${pricePerSqmLabel})` : ''}`
+    : `Prezzo: €${house.price.toLocaleString('it-IT')}${pricePerSqmLabel ? ` (${pricePerSqmLabel})` : ''}`;
 
   const handleSetStatus = (status: 'da_visitare' | 'appuntamento' | 'visitata') => {
     if (currentStatus === status) return;
@@ -204,13 +222,13 @@ Rispondi SOLO con questo JSON (senza markdown):
   useEffect(() => {
     let cancelled = false;
     if (house.lat != null && house.lng != null && house.sqm && house.sqm > 0) {
-      const pps = Math.round(house.price / house.sqm);
-      getOmiAssessment(house.lat, house.lng, pps).then(r => { if (!cancelled) setOmi(r); });
+      getOmiAssessment(house.lat, house.lng, house.price, house.sqm, contractMode)
+        .then(r => { if (!cancelled) setOmi(r); });
     } else {
       setOmi(null);
     }
     return () => { cancelled = true; };
-  }, [house.lat, house.lng, house.price, house.sqm]);
+  }, [house.lat, house.lng, house.price, house.sqm, contractMode]);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const formatItalianNumber = (value: string) => {
@@ -302,25 +320,21 @@ Rispondi SOLO con questo JSON (senza markdown):
     return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destStr)}&travelmode=driving`;
   };
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = async (force = false) => {
     setMenuOpen(false);
     setQuestionsOpen(true);
-    if (questions.length > 0 || assessment) return; // già analizzato
+    // Se l'analisi è già presente E non è un rigenera esplicito, mostra quella salvata
+    if ((questions.length > 0 || assessment) && !force) return;
     setLoadingQuestions(true);
     try {
-      const contractType = house.type === 'buy' ? 'acquisto' : 'affitto';
-      const pricePerSqm = house.sqm && house.sqm > 0
-        ? Math.round(house.price / house.sqm)
-        : null;
+      // Stessa regola del resto dell'app: senza `type` l'immobile è un acquisto.
+      const contractType = contractMode === 'rent' ? 'affitto' : 'acquisto';
 
-      // Riferimento OMI di zona: se disponibile lo passiamo all'AI come dato oggettivo.
       let omiRes = omi;
-      if (!omiRes && house.lat != null && house.lng != null && pricePerSqm) {
-        omiRes = await getOmiAssessment(house.lat, house.lng, pricePerSqm);
+      if (!omiRes && house.lat != null && house.lng != null && house.sqm) {
+        omiRes = await getOmiAssessment(house.lat, house.lng, house.price, house.sqm, contractMode);
       }
-      const omiLine = (omiRes && omiRes.assessment)
-        ? `Quotazione OMI di zona (Agenzia Entrate, sem. ${omiRes.zone.semestre} — ${omiRes.zone.comune}, zona ${omiRes.zone.zona} "${omiRes.zone.zonaDescr}"): compravendita ${omiRes.assessment.bandMin}-${omiRes.assessment.bandMax} €/m². Il prezzo/m² di questo immobile (${pricePerSqm} €/m²) è ${omiRes.assessment.position} rispetto alla fascia (${omiRes.assessment.deltaPct >= 0 ? '+' : ''}${omiRes.assessment.deltaPct}% dal valore medio).`
-        : '';
+      const omiLine = omiPromptLine(omiRes);
 
       const details = [
         house.yearBuilt ? `Anno di costruzione: ${house.yearBuilt}` : null,
@@ -330,7 +344,6 @@ Rispondi SOLO con questo JSON (senza markdown):
         house.heating ? `Riscaldamento: ${heatingLabel[house.heating]}` : null,
         house.energyClass ? `Classe energetica: ${house.energyClass}` : null,
         house.sqm ? `Superficie: ${house.sqm} mq` : null,
-        pricePerSqm ? `Prezzo al m²: circa €${pricePerSqm.toLocaleString('it-IT')}/m²` : null,
         house.condoFees ? `Spese condominiali: €${house.condoFees}/mese` : null,
         omiLine || null,
         house.notes ? `Note personali dell'utente: ${house.notes}` : null,
@@ -341,7 +354,7 @@ Rispondi SOLO con questo JSON (senza markdown):
 Immobile: ${house.title}
 Tipo contratto: ${contractType.charAt(0).toUpperCase() + contractType.slice(1)}
 Indirizzo: ${house.location}
-Prezzo: €${house.price.toLocaleString('it-IT')}
+${priceLine}
 ${details}
 
 Restituisci un oggetto JSON con questa struttura ESATTA:
@@ -365,20 +378,107 @@ Regole rigide:
         body: JSON.stringify({ prompt, type: 'analysis' })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.result) throw new Error(aiErrorReason(data));
       const clean = data.result.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
       const parsed = JSON.parse(clean);
 
-      setQuestions(Array.isArray(parsed.questions) ? parsed.questions : []);
-      setAssessment({
-        strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-        concerns: Array.isArray(parsed.concerns) ? parsed.concerns : [],
-      });
+      const newStrengths = Array.isArray(parsed.strengths) ? parsed.strengths : [];
+      const newConcerns = Array.isArray(parsed.concerns) ? parsed.concerns : [];
+      const newQuestions = Array.isArray(parsed.questions) ? parsed.questions : [];
+
+      setQuestions(newQuestions);
+      setAssessment({ strengths: newStrengths, concerns: newConcerns });
+
+      // Salva su Firestore: persiste tra sessioni, non serve rigenerare ogni volta
+      onUpdate(house.id, {
+        savedAnalysis: {
+          strengths: newStrengths,
+          concerns: newConcerns,
+          questions: newQuestions,
+          updatedAt: Date.now(),
+          postVisit: false,
+        }
+      } as Partial<House>);
     } catch (e) {
       setAssessment(null);
-      setQuestions(['Errore nella generazione. Riprova.']);
+      setQuestions([`Errore nella generazione (${e instanceof Error ? e.message : 'errore sconosciuto'}). Riprova.`]);
     } finally {
       setLoadingQuestions(false);
+    }
+  };
+
+  /**
+   * Aggiorna l'analisi incorporando le note di visita come fonte primaria.
+   * Sovrascrive quella precedente (pre-visita) e la marca come post-visita.
+   */
+  const handleUpdateAnalysisWithNotes = async () => {
+    if (!house.visitNotes || updatingWithNotes) return;
+    setUpdatingWithNotes(true);
+    setAiError(null);
+    try {
+      let omiRes = omi;
+      if (!omiRes && house.lat != null && house.lng != null && house.sqm) {
+        omiRes = await getOmiAssessment(house.lat, house.lng, house.price, house.sqm, contractMode);
+      }
+      const omiLine = omiPromptLine(omiRes);
+
+      const prompt = `Sei un consulente immobiliare. Aggiorna l'analisi di questo immobile incorporando le osservazioni dirette della visita come fonte PRIMARIA — hanno più peso dei dati dell'annuncio.
+
+IMMOBILE: ${house.title}
+Contratto: ${contractMode === 'rent' ? 'Affitto' : 'Acquisto'}
+${priceLine}
+Indirizzo: ${house.location}
+${house.yearBuilt ? `Anno: ${house.yearBuilt}` : ''} ${house.condition ? `· Stato: ${house.condition}` : ''} ${house.floor !== undefined ? `· Piano: ${house.floor}` : ''} ${house.energyClass ? `· Classe: ${house.energyClass}` : ''} ${house.condoFees ? `· Spese: €${house.condoFees}/mese` : ''}
+${omiLine}
+
+ANALISI PRE-VISITA (da aggiornare/correggere):
+${assessment ? `Punti di forza: ${assessment.strengths.join('; ')}\nCriticità: ${assessment.concerns.join('; ')}` : '(nessuna analisi precedente)'}
+
+NOTE DI VISITA (peso maggiore — osservazioni dirette):
+${house.visitNotes}
+
+Aggiorna strengths e concerns alla luce di ciò che è stato osservato in visita. Le domande diventano ora domande di approfondimento o follow-up per ${contractMode === 'rent' ? "l'agente o il proprietario (contratto, deposito, spese incluse, durata)" : "l'agente o il notaio"}.
+
+Restituisci SOLO questo JSON:
+{"strengths": ["..."], "concerns": ["..."], "questions": ["..."]}
+
+Regole: massimo 4 voci per strengths e concerns; domande: 8-12; fatti concreti, no marketing; in italiano; niente markdown.`;
+
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, type: 'analysis' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.result) throw new Error(aiErrorReason(data));
+      const clean = data.result.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+      const parsed = JSON.parse(clean);
+
+      const newStrengths = Array.isArray(parsed.strengths) ? parsed.strengths : [];
+      const newConcerns = Array.isArray(parsed.concerns) ? parsed.concerns : [];
+      const newQuestions = Array.isArray(parsed.questions) ? parsed.questions : [];
+
+      setQuestions(newQuestions);
+      setAssessment({ strengths: newStrengths, concerns: newConcerns });
+
+      onUpdate(house.id, {
+        savedAnalysis: {
+          strengths: newStrengths,
+          concerns: newConcerns,
+          questions: newQuestions,
+          updatedAt: Date.now(),
+          postVisit: true,
+        }
+      } as Partial<House>);
+
+      // Apre il modale analisi per mostrare il risultato
+      setQuestionsOpen(true);
+    } catch (e) {
+      console.error('Aggiornamento analisi post-visita fallito:', e);
+      setAiError(e instanceof Error ? e.message : 'errore sconosciuto');
+    } finally {
+      setUpdatingWithNotes(false);
     }
   };
 
@@ -715,7 +815,7 @@ Regole rigide:
           {omi?.assessment && (
             <div className="-mt-4 mb-5" onClick={e => e.stopPropagation()}>
               <span
-                title={`Quotazione OMI ${omi.zone.semestre} — ${omi.zone.zonaDescr}: ${omi.assessment.bandMin}–${omi.assessment.bandMax} €/mq (fonte: Agenzia Entrate - OMI)`}
+                title={`Quotazione OMI ${omi.zone.semestre} (${omi.assessment.mode === 'rent' ? 'locazione' : 'compravendita'}) — ${omi.zone.zonaDescr}: ${omi.assessment.bandMin.toLocaleString('it-IT')}–${omi.assessment.bandMax.toLocaleString('it-IT')} ${omi.assessment.mode === 'rent' ? '€/m²/mese' : '€/m²'} · questo immobile: ${formatPerSqm(omi.assessment.pricePerSqm, omi.assessment.mode)} (fonte: Agenzia Entrate - OMI)`}
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide cursor-help ${
                   omi.assessment.position === 'sopra' ? 'bg-amber-50 text-amber-700'
                   : omi.assessment.position === 'sotto' ? 'bg-sky-50 text-sky-700'
@@ -780,6 +880,28 @@ Regole rigide:
                       </button>
                     </div>
                   </div>
+
+                  {/* Aggiorna analisi con le note di visita */}
+                  {house.visitNotes && (
+                    <div className="border-t border-indigo-100 pt-3">
+                      <button
+                        onClick={() => { saveVisitNotes(); handleUpdateAnalysisWithNotes(); }}
+                        disabled={updatingWithNotes}
+                        className="flex items-center gap-2 w-full justify-center py-2 rounded-xl border border-indigo-200 bg-white text-indigo-700 text-[11px] font-bold uppercase tracking-widest hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {updatingWithNotes
+                          ? <><Loader size={12} className="animate-spin" /> Aggiornamento in corso…</>
+                          : <><RefreshCw size={12} /> Aggiorna analisi con queste note</>}
+                      </button>
+                      <p className="text-[9px] text-slate-400 text-center mt-1.5">
+                        Sostituisce l'analisi corrente incorporando le osservazioni della visita
+                      </p>
+                    </div>
+                  )}
+
+                  {aiError && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">Servizio AI non disponibile: {aiError}.</p>
+                  )}
 
                   {/* Valutazione AI */}
                   <div className="border-t border-indigo-100 pt-3">
@@ -989,13 +1111,42 @@ Regole rigide:
                     <h2 className="text-base font-bold text-slate-800">Analisi dell'annuncio</h2>
                   </div>
                   <p className="text-[10px] text-slate-400">{house.title}</p>
+                  {/* Badge data aggiornamento */}
+                  {house.savedAnalysis && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      {house.savedAnalysis.postVisit ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold uppercase tracking-wide">
+                          <CalendarCheck size={9} /> Aggiornata dopo la visita
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-wide">
+                          Pre-visita
+                        </span>
+                      )}
+                      <span className="text-[9px] text-slate-400">
+                        {new Date(house.savedAnalysis.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={() => setQuestionsOpen(false)}
-                  className="p-2 rounded-full hover:bg-slate-100 transition-colors"
-                >
-                  <X className="w-5 h-5 text-slate-400" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Rigenera analisi pre-visita */}
+                  {(assessment || questions.length > 0) && !loadingQuestions && !updatingWithNotes && (
+                    <button
+                      onClick={() => handleAnalyze(true)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      title="Rigenera analisi (pre-visita)"
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setQuestionsOpen(false)}
+                    className="p-2 rounded-full hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5 text-slate-400" />
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-6">
@@ -1008,21 +1159,30 @@ Regole rigide:
                   <div className="space-y-5">
                     {/* Riferimento OMI di zona: valore stimato + offerta indicativa (dati deterministici) */}
                     {omi?.assessment && house.sqm && house.sqm > 0 && (() => {
-                      const val = omiValueRange(omi.quote, house.sqm);
-                      const offer = suggestedOffer(house.price, omi.quote, house.sqm);
+                      const a = omi.assessment;
+                      const isRent = a.mode === 'rent';
+                      const val = isRent ? omiRentRange(omi.quote, house.sqm) : omiValueRange(omi.quote, house.sqm);
+                      const offer = isRent ? null : suggestedOffer(house.price, omi.quote, house.sqm);
                       const fmt = (n: number) => '€ ' + Math.round(n).toLocaleString('it-IT');
-                      const posColor = omi.assessment.position === 'sopra' ? 'text-amber-700'
-                        : omi.assessment.position === 'sotto' ? 'text-sky-700' : 'text-emerald-700';
+                      const unit = isRent ? '€/m²/mese' : '€/m²';
+                      const posColor = a.position === 'sopra' ? 'text-amber-700'
+                        : a.position === 'sotto' ? 'text-sky-700' : 'text-emerald-700';
                       return (
                         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
                           <div className="flex items-center gap-1.5 mb-2 text-slate-500">
                             <MapPin className="w-3.5 h-3.5" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">Quotazione OMI · {omi.zone.zonaDescr || omi.zone.zona}</span>
+                            <span className="text-[10px] font-bold uppercase tracking-widest">
+                              Quotazione OMI {isRent ? 'locazione' : 'compravendita'} · {omi.zone.zonaDescr || omi.zone.zona}
+                            </span>
                           </div>
                           <div className="space-y-1.5 text-sm text-slate-700">
-                            <p>Fascia di zona: <strong>{omi.quote.comprMin?.toLocaleString('it-IT')}–{omi.quote.comprMax?.toLocaleString('it-IT')} €/m²</strong> <span className="text-[11px] text-slate-400">(sem. {omi.zone.semestre})</span></p>
-                            <p>Prezzo richiesto: <strong>{Math.round(house.price / house.sqm).toLocaleString('it-IT')} €/m²</strong> — <span className={posColor + ' font-semibold'}>{omi.assessment.position}{omi.assessment.position !== 'in linea' ? ` (${omi.assessment.deltaPct >= 0 ? '+' : ''}${omi.assessment.deltaPct}%)` : ''}</span></p>
-                            {val && <p>Valore OMI stimato: <strong>{fmt(val.min)} – {fmt(val.max)}</strong></p>}
+                            <p>Fascia di zona: <strong>{a.bandMin.toLocaleString('it-IT')}–{a.bandMax.toLocaleString('it-IT')} {unit}</strong> <span className="text-[11px] text-slate-400">(sem. {omi.zone.semestre}, stato {omi.quote.stato.toLowerCase()})</span></p>
+                            <p>{isRent ? 'Canone richiesto' : 'Prezzo richiesto'}: <strong>{formatPerSqm(a.pricePerSqm, a.mode)}</strong> — <span className={posColor + ' font-semibold'}>{a.position}{a.position !== 'in linea' ? ` (${a.deltaPct >= 0 ? '+' : ''}${a.deltaPct}%)` : ''}</span></p>
+                            {val && (
+                              <p>
+                                {isRent ? 'Canone OMI stimato' : 'Valore OMI stimato'}: <strong>{fmt(val.min)} – {fmt(val.max)}{isRent ? ' / mese' : ''}</strong>
+                              </p>
+                            )}
                             {offer && (
                               <p className="pt-1.5 mt-1.5 border-t border-slate-200">
                                 Offerta di partenza indicativa: <strong className="text-slate-900">{fmt(offer.low)} – {fmt(offer.high)}</strong>

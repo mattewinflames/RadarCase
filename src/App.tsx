@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Home, Map, Calculator, Send, LayoutGrid, Info, LogOut, LogIn, 
   ArrowUpDown, Clock, Euro, MapPin, ChevronDown, ChevronLeft, ChevronRight,
-  ArrowLeft, Settings, Menu, X, Heart, Database, Shield, Radar, Bookmark, Sparkles
+  ArrowLeft, Settings, Menu, X, Heart, Database, Shield, Radar, Bookmark, Sparkles, Loader
 } from 'lucide-react';
 import { Routes, Route, useNavigate, Link } from 'react-router-dom';
 import HouseCard from './components/HouseCard';
@@ -16,7 +16,7 @@ import ExpenseSimulator from './components/ExpenseSimulator';
 import RentExpenseSimulator from './components/RentExpenseSimulator';
 import AddHouseModal from './components/AddHouseModal';
 import InstallBookmarkletModal from './components/InstallBookmarkletModal';
-import { decodeImportHash, buildDraft, ImportDraft } from './lib/importListing';
+import { decodeImportHash, buildDraft, ImportDraft, aiErrorReason } from './lib/importListing';
 import PropertyMap from './components/PropertyMap';
 import MapPage from './pages/MapPage';
 import AIConsulente from './pages/AIConsulente';
@@ -563,13 +563,19 @@ export default function App() {
       const context = relevant.length === 0
         ? '(nessun immobile salvato in questa modalità)'
         : relevant.map((h, i) => {
-            const ppsq = h.sqm ? Math.round(h.price / h.sqm) : null;
+            const isRent = mode === 'rent';
+            // Affitto: canone mensile e €/m²/mese con 2 decimali; acquisto: prezzo e €/m² intero.
+            const ppsq = h.sqm
+              ? (isRent ? Math.round((h.price / h.sqm) * 100) / 100 : Math.round(h.price / h.sqm))
+              : null;
             const vs = h.visitStatus ?? (h.visited ? 'visitata' : 'da_visitare');
             const fmt = (n: number) => n.toLocaleString('it-IT');
             return [
               `${i + 1}. ${h.title}`,
               `   Indirizzo: ${h.location}`,
-              `   Prezzo: €${fmt(h.price)}${ppsq ? ` · ${fmt(ppsq)} €/m²` : ''}${h.sqm ? ` · ${h.sqm} m²` : ''}`,
+              isRent
+                ? `   Canone: €${fmt(h.price)}/mese${ppsq ? ` · ${fmt(ppsq)} €/m²/mese` : ''}${h.sqm ? ` · ${h.sqm} m²` : ''}`
+                : `   Prezzo: €${fmt(h.price)}${ppsq ? ` · ${fmt(ppsq)} €/m²` : ''}${h.sqm ? ` · ${h.sqm} m²` : ''}`,
               h.yearBuilt ? `   Anno: ${h.yearBuilt}` : null,
               h.floor !== undefined ? `   Piano: ${h.floor}` : null,
               h.condition ? `   Stato: ${h.condition}` : null,
@@ -609,8 +615,10 @@ Rispondi a: ${text}`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, type: 'chat' }),
       });
-      const data = await res.json();
-      const reply = String(data.result || 'Errore nella risposta.').trim();
+      const data = await res.json().catch(() => ({}));
+      const reply = res.ok && data.result
+        ? String(data.result).trim()
+        : `⚠️ Il servizio AI non ha risposto (${aiErrorReason(data)}).`;
       setChatMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
     } catch (e) {
       setChatMessages(prev => [...prev, {

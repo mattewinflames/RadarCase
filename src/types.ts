@@ -56,6 +56,14 @@ export interface House {
   visitScore?: number;       // 1-10 assegnato da Gemini
   visitScoreReason?: string; // motivazione sintetica del punteggio
   visitScoreAt?: number;     // epoch ms dell'ultimo calcolo
+  // Analisi AI salvata su Firestore (pre o post-visita)
+  savedAnalysis?: {
+    strengths: string[];
+    concerns: string[];
+    questions: string[];
+    updatedAt: number;
+    postVisit: boolean; // true = incorpora le note di visita
+  };
 }
 
 /**

@@ -79,8 +79,25 @@ export function findZone(fc: OmiFeatureCollection, lat: number, lng: number): Om
  * Sceglie la quotazione residenziale di riferimento di una zona:
  * preferisce "Abitazioni civili" in stato NORMALE, con fallback ragionevoli.
  */
-export function residentialQuote(zone: OmiZone): OmiQuote | null {
-  const q = zone.quotazioni;
+export type OmiMode = 'buy' | 'rent';
+
+/** Fascia della quotazione per il tipo di contratto: compravendita (€/m²) o locazione (€/m²/mese). */
+export function bandOf(quote: OmiQuote, mode: OmiMode): { min: number; max: number } | null {
+  const min = mode === 'rent' ? quote.locMin : quote.comprMin;
+  const max = mode === 'rent' ? quote.locMax : quote.comprMax;
+  if (!min || !max || min <= 0 || max <= 0) return null;
+  return { min, max };
+}
+
+/**
+ * Sceglie la quotazione residenziale di riferimento di una zona:
+ * preferisce "Abitazioni civili" in stato NORMALE, con fallback ragionevoli.
+ * Considera solo le quotazioni che hanno la fascia del contratto richiesto:
+ * molte quotazioni OTTIMO non riportano il canone, e senza questo filtro
+ * un affitto finirebbe confrontato con una fascia vuota.
+ */
+export function residentialQuote(zone: OmiZone, mode: OmiMode = 'buy'): OmiQuote | null {
+  const q = zone.quotazioni.filter(v => bandOf(v, mode) !== null);
   const civili = q.filter(v => /abitazioni civili/i.test(v.tipologia));
   return (
     civili.find(v => /normale/i.test(v.stato)) ||
@@ -92,25 +109,41 @@ export function residentialQuote(zone: OmiZone): OmiQuote | null {
 }
 
 export interface PriceAssessment {
+  mode: OmiMode;
   position: 'sotto' | 'in linea' | 'sopra';
-  deltaPct: number;   // scostamento dal punto medio della fascia, in %
-  bandMin: number;
+  deltaPct: number;     // scostamento dal punto medio della fascia, in %
+  bandMin: number;      // €/m² (acquisto) oppure €/m²/mese (affitto)
   bandMax: number;
+  pricePerSqm: number;  // €/m² (acquisto, intero) oppure €/m²/mese (affitto, 2 decimali)
 }
 
 /**
- * Colloca il prezzo/m² di un immobile rispetto alla fascia OMI di compravendita.
+ * Colloca il prezzo/m² di un immobile rispetto alla fascia OMI del suo contratto.
  * "in linea" se dentro [min, max]; altrimenti sotto/sopra, con lo scostamento % dal medio.
  */
-export function assessPricePerSqm(pricePerSqm: number, quote: OmiQuote): PriceAssessment | null {
-  const min = quote.comprMin, max = quote.comprMax;
-  if (!min || !max || min <= 0 || max <= 0) return null;
-  const mid = (min + max) / 2;
+export function assessPricePerSqm(pricePerSqm: number, quote: OmiQuote, mode: OmiMode = 'buy'): PriceAssessment | null {
+  const band = bandOf(quote, mode);
+  if (!band || !(pricePerSqm > 0)) return null;
+  const mid = (band.min + band.max) / 2;
   const deltaPct = Math.round(((pricePerSqm - mid) / mid) * 100);
   let position: PriceAssessment['position'] = 'in linea';
-  if (pricePerSqm < min) position = 'sotto';
-  else if (pricePerSqm > max) position = 'sopra';
-  return { position, deltaPct, bandMin: min, bandMax: max };
+  if (pricePerSqm < band.min) position = 'sotto';
+  else if (pricePerSqm > band.max) position = 'sopra';
+  return { mode, position, deltaPct, bandMin: band.min, bandMax: band.max, pricePerSqm };
+}
+
+/** €/m² (acquisto, intero) o €/m²/mese (affitto, 2 decimali): l'unità segue il contratto. */
+export function pricePerSqmFor(price: number, sqm: number, mode: OmiMode): number | null {
+  if (!price || !sqm || sqm <= 0) return null;
+  const v = price / sqm;
+  return mode === 'rent' ? Math.round(v * 100) / 100 : Math.round(v);
+}
+
+/** Formato it-IT coerente con l'unità: "2.067 €/m²" oppure "13,57 €/m²/mese". */
+export function formatPerSqm(v: number, mode: OmiMode): string {
+  return mode === 'rent'
+    ? `${v.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} €/m²/mese`
+    : `${Math.round(v).toLocaleString('it-IT')} €/m²`;
 }
 
 /* ---------------------------------------------------------------- caricamento lazy
@@ -178,13 +211,45 @@ export function suggestedOffer(asking: number, quote: OmiQuote, sqm: number): Of
   return { low, high };
 }
 
-/** Tutto in una chiamata: carica, trova la zona, sceglie la quota, valuta il prezzo/m². */
-export async function getOmiAssessment(lat: number, lng: number, pricePerSqm: number): Promise<OmiResult | null> {
+/** Canone mensile OMI stimato per l'immobile: fascia €/m²/mese × superficie (solo affitto). */
+export function omiRentRange(quote: OmiQuote, sqm: number): OmiValue | null {
+  const band = bandOf(quote, 'rent');
+  if (!band || !sqm || sqm <= 0) return null;
+  const min = band.min * sqm;
+  const max = band.max * sqm;
+  return { min, max, mid: (min + max) / 2 };
+}
+
+/**
+ * Tutto in una chiamata: carica, trova la zona, sceglie la quota del contratto
+ * giusto e valuta il prezzo (vendita) o il canone (affitto) al m².
+ */
+export async function getOmiAssessment(
+  lat: number, lng: number, price: number, sqm: number, mode: OmiMode = 'buy'
+): Promise<OmiResult | null> {
+  const pps = pricePerSqmFor(price, sqm, mode);
+  if (pps == null) return null;
   const fc = await loadOmiForPoint(lat, lng);
   if (!fc) return null;
   const zone = findZone(fc, lat, lng);
   if (!zone) return null;
-  const quote = residentialQuote(zone);
+  const quote = residentialQuote(zone, mode);
   if (!quote) return null;
-  return { zone, quote, assessment: assessPricePerSqm(pricePerSqm, quote) };
+  return { zone, quote, assessment: assessPricePerSqm(pps, quote, mode) };
+}
+
+/**
+ * Riga di contesto OMI per i prompt AI, con l'unità del contratto esplicita
+ * (evita che l'AI confronti un canone mensile con una fascia di compravendita).
+ */
+export function omiPromptLine(r: OmiResult | null): string {
+  if (!r || !r.assessment) return '';
+  const a = r.assessment;
+  const tipo = a.mode === 'rent' ? 'locazione' : 'compravendita';
+  const fascia = a.mode === 'rent'
+    ? `${a.bandMin.toLocaleString('it-IT')}-${a.bandMax.toLocaleString('it-IT')} €/m²/mese`
+    : `${a.bandMin.toLocaleString('it-IT')}-${a.bandMax.toLocaleString('it-IT')} €/m²`;
+  const segno = a.deltaPct >= 0 ? '+' : '';
+  return `Quotazione OMI di zona (Agenzia Entrate, sem. ${r.zone.semestre} — ${r.zone.comune}, zona ${r.zone.zona} "${r.zone.zonaDescr}"), ${tipo}: ${fascia}. ` +
+    `${a.mode === 'rent' ? 'Il canone' : 'Il prezzo'} di questo immobile (${formatPerSqm(a.pricePerSqm, a.mode)}) è ${a.position} rispetto alla fascia (${segno}${a.deltaPct}% dal valore medio).`;
 }

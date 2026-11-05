@@ -357,6 +357,10 @@ export default function AddHouseModal({ onAdd, isOpen, onClose, appMode, prefill
                   value={formData.notes}
                   onChange={e => setFormData({...formData, notes: e.target.value})}
                 />
+                {/* Avviso discreto se la sintesi automatica della descrizione è fallita */}
+                {prefill?.notesWarning && !formData.notes && (
+                  <p className="mt-1.5 text-[11px] text-amber-700 leading-snug">{prefill.notesWarning}</p>
+                )}
               </div>
 
               {/* Sezione dettagli aggiuntivi collassabile */}

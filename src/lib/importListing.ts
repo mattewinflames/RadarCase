@@ -31,6 +31,8 @@ export type ImportDraft = {
   source?: string;
   /** sintesi AI della descrizione dell'annuncio, da mettere nelle note */
   notes?: string;
+  /** motivo per cui la sintesi non è stata prodotta (mostrato sotto il campo Note) */
+  notesWarning?: string;
 };
 
 export interface ImportPayload {
@@ -172,21 +174,44 @@ Restituisci un oggetto JSON: {"summary": "sintesi in 2-4 frasi brevi in italiano
 DESCRIZIONE:
 `;
 
-export async function summarizeDescription(text: string): Promise<string> {
+/**
+ * Traduce in italiano il motivo di un errore di /api/gemini, leggendo il corpo
+ * della risposta ({error, details}). Serve a non mostrare messaggi generici quando
+ * la causa è nota (es. crediti esauriti), che altrimenti resterebbe invisibile.
+ */
+export function aiErrorReason(data: any): string {
+  const details = String((data && (data.details || data.error)) || '');
+  if (/credits are depleted|prepayment|billing/i.test(details)) {
+    return 'crediti Gemini esauriti: vanno ricaricati da Google AI Studio';
+  }
+  if (/api key|API_KEY|permission|unauthori[sz]ed/i.test(details)) {
+    return 'chiave API Gemini non valida o non autorizzata';
+  }
+  if (/quota|rate limit|429|resource.?exhausted/i.test(details)) {
+    return 'limite di richieste Gemini raggiunto, riprova tra poco';
+  }
+  return details ? details.slice(0, 160) : 'errore sconosciuto';
+}
+
+/**
+ * Sintetizza la descrizione per le note. La sintesi è un extra: se fallisce
+ * l'import prosegue comunque, ma il motivo viene restituito per poterlo mostrare.
+ */
+export async function summarizeDescription(text: string): Promise<{ summary: string; error?: string }> {
   const clean = (text || '').trim();
-  if (clean.length < 40) return ''; // troppo corta per valere una sintesi
+  if (clean.length < 40) return { summary: '' }; // troppo corta per valere una sintesi
   try {
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: SUMMARY_PROMPT + clean.slice(0, 6000), type: 'analysis' })
     });
-    if (!response.ok) return '';
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { summary: '', error: aiErrorReason(data) };
     const parsed = JSON.parse(String(data.result || '').trim());
-    return String(parsed.summary || '').trim().slice(0, 800);
+    return { summary: String(parsed.summary || '').trim().slice(0, 800) };
   } catch (e) {
-    return ''; // la sintesi è un extra: se fallisce, l'import prosegue senza note
+    return { summary: '', error: 'risposta del servizio AI non leggibile' };
   }
 }
 
@@ -231,7 +256,8 @@ export async function parseTextWithAI(payload: ImportPayload): Promise<ImportDra
   });
 
   if (!response.ok) {
-    throw new Error('Il servizio di lettura annunci non ha risposto. Riprova o inserisci i dati a mano.');
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(`Il servizio di lettura annunci non ha risposto (${aiErrorReason(errData)}). Riprova o inserisci i dati a mano.`);
   }
 
   const data = await response.json();
@@ -276,8 +302,9 @@ export async function buildDraft(payload: ImportPayload): Promise<ImportDraft> {
     // Immobiliare fornisce la descrizione strutturata: la sintetizziamo per le note.
     const desc = payload.data && payload.data.description;
     if (desc) {
-      const notes = await summarizeDescription(String(desc));
-      if (notes) draft.notes = notes;
+      const { summary, error } = await summarizeDescription(String(desc));
+      if (summary) draft.notes = summary;
+      else if (error) draft.notesWarning = `Note non compilate in automatico: ${error}.`;
     }
     return draft;
   }
