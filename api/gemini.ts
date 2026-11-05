@@ -13,11 +13,19 @@ export default async function handler(req: any, res: any) {
   // temperatura più naturale. Gli altri type ('analysis', 'questions') restano invariati.
   const isChat = type === 'chat';
 
-  // ✅ SOLO MODELLI ATTUALMENTE SUPPORTATI
+  // Catena pensata per il LIVELLO GRATUITO: le quote sono separate per modello,
+  // quindi quando un modello esaurisce la quota giornaliera (HTTP 429) si passa
+  // al successivo. Ordine: qualità "Flash" prima, poi i "Flash-Lite" ad alta
+  // capienza come rete di sicurezza. Limiti gratuiti visti in AI Studio (nov 2026):
+  //   Flash       → 5 RPM, 20 richieste/giorno ciascuno
+  //   Flash-Lite  → 15 RPM, 500 richieste/giorno ciascuno
+  // Niente 2.0 Flash / 2.5 Pro: sul gratuito hanno quota zero.
   const models = [
-    'gemini-2.5-flash', // veloce + economico (best default)
-    'gemini-2.0-flash', // fallback stabile
-    'gemini-2.5-pro'    // più potente (fallback finale)
+    'gemini-3.8-flash',      // stabile, consigliato da Google per i nuovi progetti
+    'gemini-3.6-flash',      // stabile
+    'gemini-2.5-flash',      // disponibile solo a chi l'ha già usato: se 404 si salta
+    'gemini-3.5-flash-lite', // stabile, 500/giorno
+    'gemini-3.1-flash-lite'  // stabile, 500/giorno (ultima rete di sicurezza)
   ];
 
   let finalText: string | null = null;
